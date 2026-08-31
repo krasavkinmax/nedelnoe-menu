@@ -1,5 +1,6 @@
 import { initialState, saveState } from "./state.js";
-import { generateWeek, replaceMeal } from "./engine/generator.js";
+import { generateWeek, replaceMeal, skipMeal, restoreMeal } from "./engine/generator.js";
+import { exportWeekPdf } from "./engine/pdf-export.js";
 import { recipeCost } from "./engine/nutrition.js";
 import { formatRub } from "./engine/shopping.js";
 import { render } from "./ui/render.js";
@@ -14,7 +15,9 @@ const actions = {
     state.week = generateWeek(state.settings, state.seed);
     state.shopChecked = {};
     state.tab = "menu";
-    state.toast = "Новая неделя собрана. Можно заменить любое блюдо или выбрать более дешёвый вариант.";
+    state.toast = state.settings.cookTwoDays
+      ? "Неделя собрана: обед и ужин на пн–вт, ср–чт, пт–сб готовим сразу на два дня. Воскресенье — однодневное."
+      : "Новая неделя собрана. Можно заменить любое блюдо или выбрать более дешёвый вариант.";
     persist();
   },
   replace(dayIndex, slot, mode) {
@@ -84,6 +87,39 @@ const actions = {
   },
   closeLore() {
     state.loreOpen = false;
+    paint();
+  },
+  skip(dayIndex, slot) {
+    if (!state.week) return;
+    state.week = skipMeal(state.week, dayIndex, slot);
+    state.toast = "Блюдо убрано из этого дня. Список покупок пересчитан.";
+    persist();
+  },
+  restore(dayIndex, slot) {
+    if (!state.week) return;
+    state.week = restoreMeal(state.week, dayIndex, slot);
+    state.toast = "Блюдо возвращено, покупки обновлены.";
+    persist();
+  },
+  setCookTwoDays(value) {
+    state.settings.cookTwoDays = value;
+    persist();
+  },
+  async exportPdf() {
+    if (!state.week) {
+      state.toast = "Сначала составьте меню.";
+      paint();
+      return;
+    }
+    state.toast = "Готовим PDF…";
+    paint();
+    try {
+      await exportWeekPdf(state.week, state.settings);
+      state.toast = "Файл «Menyu-na-nedelyu.pdf» скачан. На телефоне он обычно в папке «Загрузки».";
+    } catch (err) {
+      state.toast = "Не удалось скачать PDF (нужен интернет для библиотеки). Попробуйте ещё раз на Wi‑Fi.";
+      console.error(err);
+    }
     paint();
   },
 };

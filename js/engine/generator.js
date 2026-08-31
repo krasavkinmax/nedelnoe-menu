@@ -1,6 +1,6 @@
 import { RECIPES, DAIRY_PRODUCT_IDS } from "../data/recipes.js";
 import { recipeInSeason } from "../data/seasons.js";
-import { familyTargets, SLOT_KCAL_SHARE, MEAL_SLOTS, MEAL_SCALE, dislikedProductIds } from "../data/family.js";
+import { familyTargets, SLOT_KCAL_SHARE, MEAL_SLOTS, MEAL_SCALE, dislikedProductIds, leftoverPartner, isSkipped } from "../data/family.js";
 import {
   recipeNutrition,
   familyMealNutrition,
@@ -57,13 +57,18 @@ export function generateWeek(settings, seed) {
 
   balanceDays(days, settings, rng, used, targets);
   applyWeeklyGuarantees(days, settings, rng, used, targets);
+  syncLeftovers(days, settings, targets);
+  if (settings.cookTwoDays && fishCount(days) < 2 && !dislikedProductIds(settings.disliked).has("fishFillet")) {
+    forceProtein(days, "fish", 2, settings, rng, used, targets, ["lunch", "dinner"]);
+    syncLeftovers(days, settings, targets);
+  }
 
-  return {
+  return refreshWeekNutrition({
     seed,
     days,
-    weekTotals: roundNutrition(sumDays(days)),
+    skipped: {},
     targets,
-  };
+  });
 }
 
 export function replaceMeal(week, dayIndex, slot, settings, mode = "any") {
@@ -96,26 +101,66 @@ export function replaceMeal(week, dayIndex, slot, settings, mode = "any") {
   if (!next) return week;
 
   days[dayIndex].meals[slot] = next;
-  days[dayIndex] = makeDay(dayIndex, days[dayIndex].meals, week.targets);
+  const partner = leftoverPartner(dayIndex, settings.cookTwoDays);
+  if (partner != null && (slot === "lunch" || slot === "dinner")) {
+    days[partner].meals[slot] = next;
+  }
 
+  const nextWeek = refreshWeekNutrition({
+    ...week,
+    days,
+  });
+  nextWeek.lastReplace = {
+    slot,
+    dayIndex,
+    from: current,
+    to: next,
+    saved: current ? recipeCost(current) - recipeCost(next) : 0,
+  };
+  return nextWeek;
+}
+
+export function skipMeal(week, dayIndex, slot) {
+  const skipped = { ...(week.skipped || {}), [skipKeyFrom(dayIndex, slot)]: true };
+  return refreshWeekNutrition({ ...week, skipped });
+}
+
+export function restoreMeal(week, dayIndex, slot) {
+  const skipped = { ...(week.skipped || {}) };
+  delete skipped[skipKeyFrom(dayIndex, slot)];
+  return refreshWeekNutrition({ ...week, skipped });
+}
+
+export function refreshWeekNutrition(week) {
+  const days = week.days.map((day) => makeDay(day.index, day.meals, week.targets, week.skipped));
   return {
     ...week,
     days,
     weekTotals: roundNutrition(sumDays(days)),
-    lastReplace: {
-      slot,
-      dayIndex,
-      from: current,
-      to: next,
-      saved: current ? recipeCost(current) - recipeCost(next) : 0,
-    },
   };
 }
 
-function makeDay(index, meals, targets) {
+function skipKeyFrom(dayIndex, slot) {
+  return `${dayIndex}:${slot}`;
+}
+
+function syncLeftovers(days, settings, targets) {
+  if (!settings.cookTwoDays) return;
+  for (const a of [0, 2, 4]) {
+    const b = a + 1;
+    days[b].meals.lunch = days[a].meals.lunch;
+    days[b].meals.dinner = days[a].meals.dinner;
+    days[a] = makeDay(a, days[a].meals, targets);
+    days[b] = makeDay(b, days[b].meals, targets);
+  }
+}
+
+function makeDay(index, meals, targets, skipped) {
   let totals = emptyNutrition();
   for (const slot of MEAL_SLOTS) {
-    if (meals[slot]) totals = addNutrition(totals, familyMealNutrition(meals[slot]));
+    if (meals[slot] && !isSkipped({ skipped }, index, slot)) {
+      totals = addNutrition(totals, familyMealNutrition(meals[slot]));
+    }
   }
   return {
     index,

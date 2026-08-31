@@ -99,7 +99,28 @@ export const DEFAULT_SETTINGS = {
   preferLocal: true,
   disliked: ["shrimp"],
   month: new Date().getMonth() + 1,
+  cookTwoDays: false,
 };
+
+export function leftoverPartner(dayIndex, cookTwoDays) {
+  if (!cookTwoDays || dayIndex >= 6) return null;
+  return dayIndex % 2 === 0 ? dayIndex + 1 : dayIndex - 1;
+}
+
+export function leftoverPairLabel(dayIndex, cookTwoDays) {
+  const p = leftoverPartner(dayIndex, cookTwoDays);
+  if (p == null) return "";
+  const a = Math.min(dayIndex, p);
+  return `${WEEKDAY_SHORT[a]}–${WEEKDAY_SHORT[a + 1]}`;
+}
+
+export function skipKey(dayIndex, slot) {
+  return `${dayIndex}:${slot}`;
+}
+
+export function isSkipped(week, dayIndex, slot) {
+  return Boolean(week?.skipped?.[skipKey(dayIndex, slot)]);
+}
 
 export const DISLIKE_OPTIONS = [
   { id: "shrimp", label: "Креветки", locked: true, note: "аллергия у дочери" },

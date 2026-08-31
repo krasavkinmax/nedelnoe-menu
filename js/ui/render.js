@@ -8,6 +8,8 @@ import {
   MEAL_SCALE,
   WEEKDAY_SHORT,
   portionsFor,
+  leftoverPairLabel,
+  isSkipped,
 } from "../data/family.js";
 import { PRODUCTS } from "../data/products.js";
 import { RECIPE_STEPS } from "../data/recipe-steps.js";
@@ -36,6 +38,7 @@ export function render(root, state, actions) {
       <div class="actions">
         <button class="btn btn-primary" data-act="generate">Составить меню</button>
         ${state.week ? `<button class="btn btn-ghost" data-act="generate">Пересобрать неделю</button>` : ""}
+        ${state.week ? `<button class="btn btn-ghost" data-act="export">Выгрузить меню</button>` : ""}
       </div>
     </header>
 
@@ -57,6 +60,9 @@ export function render(root, state, actions) {
 
   root.querySelectorAll("[data-act='generate']").forEach((el) => {
     el.addEventListener("click", () => actions.generate());
+  });
+  root.querySelectorAll("[data-act='export']").forEach((el) => {
+    el.addEventListener("click", () => actions.exportPdf());
   });
   root.querySelectorAll("[data-tab]").forEach((el) => {
     el.addEventListener("click", () => actions.setTab(el.getAttribute("data-tab")));
@@ -102,6 +108,15 @@ export function render(root, state, actions) {
       actions.closeLore();
     });
   });
+  root.querySelectorAll("[data-skip]").forEach((el) => {
+    el.addEventListener("click", () => actions.skip(+el.dataset.day, el.dataset.skip));
+  });
+  root.querySelectorAll("[data-restore]").forEach((el) => {
+    el.addEventListener("click", () => actions.restore(+el.dataset.day, el.dataset.restore));
+  });
+  root.querySelectorAll("[data-twodays]").forEach((el) => {
+    el.addEventListener("click", () => actions.setCookTwoDays(el.dataset.twodays === "1"));
+  });
 }
 
 function renderMenu(state, targets) {
@@ -122,7 +137,8 @@ function renderMenu(state, targets) {
     <nav class="day-nav" aria-label="Дни недели">
       ${week.days
         .map((d, i) => {
-          const first = d.meals.lunch?.title || d.meals.breakfast?.title || "";
+          const lunch = !isSkipped(week, i, "lunch") ? d.meals.lunch?.title : "";
+          const first = lunch || (!isSkipped(week, i, "breakfast") ? d.meals.breakfast?.title : "") || "меню";
           return `<button type="button" class="day-pill ${i === idx ? "on" : ""}" data-select-day="${i}">
             <span class="day-pill-name">${WEEKDAY_SHORT[i]}</span>
             <span class="day-pill-hint">${escapeHtml(shortTitle(first))}</span>
@@ -130,7 +146,7 @@ function renderMenu(state, targets) {
         })
         .join("")}
     </nav>
-    ${renderDay(day)}
+    ${renderDay(day, state)}
     <section class="totals">
       <h2>Итоги недели</h2>
       ${renderBars(week.weekTotals, {
@@ -148,7 +164,7 @@ function shortTitle(title) {
   return title.length > 18 ? `${title.slice(0, 16)}…` : title;
 }
 
-function renderDay(day) {
+function renderDay(day, state) {
   const t = day.target;
   const kcalOk = day.totals.kcal >= t.kcal * 0.9 && day.totals.kcal <= t.kcal * 1.1;
   return `
@@ -158,18 +174,34 @@ function renderDay(day) {
         <div class="day-kcal">${day.totals.kcal} / ${t.kcal} ккал${kcalOk ? "" : " · вне коридора"}</div>
         <div class="track day-track"><div class="fill ${kcalOk ? "" : "warn"}" style="width:${Math.min(100, Math.round((day.totals.kcal / t.kcal) * 100))}%"></div></div>
       </div>
-      ${MEAL_SLOTS.map((slot) => renderMeal(day, slot)).join("")}
+      ${MEAL_SLOTS.map((slot) => renderMeal(day, slot, state)).join("")}
     </article>
   `;
 }
 
-function renderMeal(day, slot) {
+function renderMeal(day, slot, state) {
   const recipe = day.meals[slot];
   if (!recipe) return "";
+  if (isSkipped(state.week, day.index, slot)) {
+    return `
+      <div class="meal meal-skipped">
+        <div class="meal-label">${MEAL_LABELS[slot]}</div>
+        <p class="meal-title">Убрано из этого дня</p>
+        <p class="lede">Покупки пересчитаны без этого блюда.</p>
+        <div class="meal-actions">
+          <button class="mini mini-primary" data-restore="${slot}" data-day="${day.index}">Вернуть блюдо</button>
+        </div>
+      </div>
+    `;
+  }
   const n = roundNutrition(scaleNutrition(recipeNutrition(recipe), MEAL_SCALE[recipe.meal] ?? 1));
   const cost = recipeCost(recipe);
   const local = recipe.cuisine === "bashkir" || recipe.cuisine === "tatar";
   const cuisineLabel = { bashkir: "башкирское", tatar: "татарское", ru: "домашнее" }[recipe.cuisine];
+  const leftover =
+    (slot === "lunch" || slot === "dinner") && state.settings.cookTwoDays
+      ? leftoverPairLabel(day.index, true)
+      : "";
   return `
     <div class="meal">
       <div class="meal-label">${MEAL_LABELS[slot]}</div>
@@ -180,12 +212,14 @@ function renderMeal(day, slot) {
         <span class="tag">${recipe.minutes} мин</span>
         <span class="tag">${formatRub(cost)}</span>
         <span class="tag ${local ? "local" : ""}">${cuisineLabel}</span>
+        ${leftover ? `<span class="tag leftover">на ${leftover}</span>` : ""}
       </div>
       <p class="child-note"><strong>Для ребёнка:</strong> ${escapeHtml(recipe.childNote)}</p>
       <div class="meal-actions">
         <button class="mini mini-primary" data-recipe="${slot}" data-recipe-day="${day.index}">Рецепт</button>
         <button class="mini" data-replace="any" data-day="${day.index}" data-slot="${slot}">Заменить</button>
         <button class="mini" data-replace="cheaper" data-day="${day.index}" data-slot="${slot}">Дешевле</button>
+        <button class="mini" data-skip="${slot}" data-day="${day.index}">Убрать</button>
       </div>
     </div>
   `;
@@ -337,6 +371,14 @@ function renderSettings(state) {
         <div class="seg">
           <button type="button" data-local="1" class="${s.preferLocal ? "on" : ""}">Больше башкирских и татарских блюд</button>
           <button type="button" data-local="0" class="${!s.preferLocal ? "on" : ""}">Нейтрально</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="field-title">Обед и ужин на два дня</span>
+        <p class="lede">Готовим обед и ужин сразу на пн–вт, ср–чт, пт–сб. Воскресенье — однодневное. После смены нажмите «Составить меню».</p>
+        <div class="seg">
+          <button type="button" data-twodays="1" class="${s.cookTwoDays ? "on" : ""}">Включено</button>
+          <button type="button" data-twodays="0" class="${!s.cookTwoDays ? "on" : ""}">Выключено</button>
         </div>
       </div>
       <div class="field">

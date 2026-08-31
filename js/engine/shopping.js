@@ -9,6 +9,7 @@ export function buildShoppingList(week) {
     for (const slot of Object.keys(day.meals)) {
       const recipe = day.meals[slot];
       if (!recipe) continue;
+      if (week.skipped?.[`${day.index}:${slot}`]) continue;
       for (const ing of recipe.ingredients) {
         grams.set(ing.productId, (grams.get(ing.productId) || 0) + ing.grams * portionsFor(recipe));
       }

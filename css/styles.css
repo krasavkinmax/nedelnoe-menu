@@ -447,8 +447,19 @@ h1 {
   margin: 0 0 8px;
 }
 
+.tag.leftover {
+  background: #f3e2c8;
+  color: var(--terra-dark);
+}
+
+.meal-skipped {
+  background: #f7f1e8;
+  opacity: 0.92;
+}
+
 .meal-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
