@@ -89,37 +89,72 @@ export const MEAL_LABELS = {
   snackPm: "Перекус днём",
 };
 
+export const WEEKDAY_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+/** Всегда исключаем: аллергия у дочери. */
+export const ALLERGY_EXCLUDE = ["shrimp"];
+
 export const DEFAULT_SETTINGS = {
   activity: "mid",
   preferLocal: true,
-  disliked: [],
+  disliked: ["shrimp"],
   month: new Date().getMonth() + 1,
 };
 
 export const DISLIKE_OPTIONS = [
+  { id: "shrimp", label: "Креветки", locked: true, note: "аллергия у дочери" },
   { id: "fishFillet", label: "Рыба" },
+  { id: "chicken", label: "Курица" },
+  { id: "turkey", label: "Индейка" },
+  { id: "beef", label: "Говядина" },
+  { id: "pork", label: "Свинина" },
   { id: "liver", label: "Печень" },
+  { id: "egg", label: "Яйца" },
+  { id: "milk", label: "Молоко" },
+  { id: "tvorog", label: "Творог" },
+  { id: "cheese", label: "Сыр" },
+  { id: "honey", label: "Мёд" },
+  { id: "nuts", label: "Орехи" },
   { id: "mushrooms", label: "Грибы" },
+  { id: "garlic", label: "Чеснок" },
+  { id: "onion", label: "Лук" },
+  { id: "banana", label: "Бананы" },
+  { id: "lemon", label: "Цитрусовые" },
+  { id: "chocolate", label: "Шоколад" },
+  { id: "buckwheat", label: "Гречка" },
   { id: "lentils", label: "Чечевица" },
   { id: "peasDry", label: "Горох" },
   { id: "chickpeas", label: "Нут" },
-  { id: "milk", label: "Молоко" },
-  { id: "tvorog", label: "Творог" },
 ];
 
 export const DISLIKE_GROUPS = {
+  shrimp: ["shrimp"],
   fishFillet: ["fishFillet", "pike"],
+  chicken: ["chicken", "chickenBreast"],
+  turkey: ["turkey"],
+  beef: ["beef"],
+  pork: ["pork"],
   liver: ["liver"],
+  egg: ["egg"],
+  milk: ["milk"],
+  tvorog: ["tvorog"],
+  cheese: ["cheese"],
+  honey: ["honey"],
+  nuts: ["nuts"],
   mushrooms: ["mushrooms"],
+  garlic: ["garlic"],
+  onion: ["onion"],
+  banana: ["banana"],
+  lemon: ["lemon"],
+  chocolate: ["chocolate"],
+  buckwheat: ["buckwheat"],
   lentils: ["lentils"],
   peasDry: ["peasDry"],
   chickpeas: ["chickpeas"],
-  milk: ["milk"],
-  tvorog: ["tvorog"],
 };
 
 export function dislikedProductIds(disliked) {
-  const ids = new Set();
+  const ids = new Set(ALLERGY_EXCLUDE);
   for (const id of disliked) {
     for (const pid of DISLIKE_GROUPS[id] || [id]) ids.add(pid);
   }

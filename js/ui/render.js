@@ -6,7 +6,11 @@ import {
   ACTIVITY_LABELS,
   DISLIKE_OPTIONS,
   MEAL_SCALE,
+  WEEKDAY_SHORT,
+  portionsFor,
 } from "../data/family.js";
+import { PRODUCTS } from "../data/products.js";
+import { RECIPE_STEPS } from "../data/recipe-steps.js";
 import { recipeNutrition, recipeCost, roundNutrition, scaleNutrition } from "../engine/nutrition.js";
 import { buildShoppingList, formatRub } from "../engine/shopping.js";
 
@@ -44,8 +48,9 @@ export function render(root, state, actions) {
     ${state.tab === "menu" ? renderMenu(state, targets) : ""}
     ${state.tab === "shop" ? renderShop(state) : ""}
     ${state.tab === "settings" ? renderSettings(state) : ""}
+    ${state.recipeOpen ? renderRecipeSheet(state) : ""}
 
-    <p class="disclaimer">Меню носит ознакомительный характер и не заменяет консультацию педиатра или врача. Нормы ккал — ориентир по МР 2.3.1.0253-21 (активность можно сменить в настройках). Цены — оценка по Уфе/Стерлитамаку, не чек из магазина.</p>
+    <p class="disclaimer">Меню носит ознакомительный характер и не заменяет консультацию педиатра или врача. Нормы ккал — ориентир по МР 2.3.1.0253-21 (активность можно сменить в настройках). Цены — оценка по Уфе/Стерлитамаку, не чек из магазина. Креветки исключены всегда: аллергия у дочери.</p>
   `;
 
   root.querySelectorAll("[data-act='generate']").forEach((el) => {
@@ -74,6 +79,15 @@ export function render(root, state, actions) {
   root.querySelectorAll("[data-dislike]").forEach((el) => {
     el.addEventListener("change", () => actions.toggleDislike(el.dataset.dislike));
   });
+  root.querySelectorAll("[data-select-day]").forEach((el) => {
+    el.addEventListener("click", () => actions.setDay(+el.dataset.selectDay));
+  });
+  root.querySelectorAll("[data-recipe]").forEach((el) => {
+    el.addEventListener("click", () => actions.openRecipe(+el.dataset.recipeDay, el.dataset.recipe));
+  });
+  root.querySelectorAll("[data-close-recipe]").forEach((el) => {
+    el.addEventListener("click", () => actions.closeRecipe());
+  });
 }
 
 function renderMenu(state, targets) {
@@ -88,10 +102,21 @@ function renderMenu(state, targets) {
   }
 
   const week = state.week;
+  const idx = Math.min(Math.max(state.selectedDay ?? 0, 0), 6);
+  const day = week.days[idx];
   return `
-    <section class="week">
-      ${week.days.map(renderDay).join("")}
-    </section>
+    <nav class="day-nav" aria-label="Дни недели">
+      ${week.days
+        .map((d, i) => {
+          const first = d.meals.lunch?.title || d.meals.breakfast?.title || "";
+          return `<button type="button" class="day-pill ${i === idx ? "on" : ""}" data-select-day="${i}">
+            <span class="day-pill-name">${WEEKDAY_SHORT[i]}</span>
+            <span class="day-pill-hint">${escapeHtml(shortTitle(first))}</span>
+          </button>`;
+        })
+        .join("")}
+    </nav>
+    ${renderDay(day)}
     <section class="totals">
       <h2>Итоги недели</h2>
       ${renderBars(week.weekTotals, {
@@ -104,11 +129,16 @@ function renderMenu(state, targets) {
   `;
 }
 
+function shortTitle(title) {
+  if (!title) return "меню";
+  return title.length > 18 ? `${title.slice(0, 16)}…` : title;
+}
+
 function renderDay(day) {
   const t = day.target;
   const kcalOk = day.totals.kcal >= t.kcal * 0.9 && day.totals.kcal <= t.kcal * 1.1;
   return `
-    <article class="day">
+    <article class="day day-full">
       <div class="day-head">
         <h2>${day.weekday}</h2>
         <div class="day-kcal">${day.totals.kcal} / ${t.kcal} ккал${kcalOk ? "" : " · вне коридора"}</div>
@@ -139,10 +169,48 @@ function renderMeal(day, slot) {
       </div>
       <p class="child-note"><strong>Для ребёнка:</strong> ${escapeHtml(recipe.childNote)}</p>
       <div class="meal-actions">
+        <button class="mini mini-primary" data-recipe="${slot}" data-recipe-day="${day.index}">Рецепт</button>
         <button class="mini" data-replace="any" data-day="${day.index}" data-slot="${slot}">Заменить</button>
         <button class="mini" data-replace="cheaper" data-day="${day.index}" data-slot="${slot}">Дешевле</button>
       </div>
     </div>
+  `;
+}
+
+function renderRecipeSheet(state) {
+  const { dayIndex, slot } = state.recipeOpen;
+  const recipe = state.week?.days[dayIndex]?.meals[slot];
+  if (!recipe) return "";
+  const steps = RECIPE_STEPS[recipe.id] || ["Подробный рецепт для этого блюда скоро появится."];
+  const scale = portionsFor(recipe);
+  const ingredients = recipe.ingredients
+    .map((ing) => {
+      const prod = PRODUCTS[ing.productId];
+      if (!prod) return "";
+      const grams = Math.round(ing.grams * scale);
+      return `<li><span>${escapeHtml(prod.name)}</span><strong>${grams} г</strong></li>`;
+    })
+    .join("");
+  return `
+    <div class="sheet-backdrop" data-close-recipe="1"></div>
+    <aside class="sheet" role="dialog" aria-label="Рецепт">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <div>
+          <p class="meal-label">${MEAL_LABELS[slot]} · ${state.week.days[dayIndex].weekday}</p>
+          <h2>${escapeHtml(recipe.title)}</h2>
+          <p class="sheet-meta">${recipe.minutes} мин · на семью из трёх человек</p>
+        </div>
+        <button type="button" class="sheet-close" data-close-recipe="1" aria-label="Закрыть">×</button>
+      </div>
+      <p class="child-note"><strong>Для ребёнка:</strong> ${escapeHtml(recipe.childNote)}</p>
+      <h3>Ингредиенты</h3>
+      <ul class="ing-list">${ingredients}</ul>
+      <h3>Как приготовить</h3>
+      <ol class="steps">
+        ${steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}
+      </ol>
+    </aside>
   `;
 }
 
@@ -210,7 +278,7 @@ function renderSettings(state) {
       <h2>Настройки рациона</h2>
       <p class="lede">После смены настроек нажмите «Составить меню», чтобы пересобрать неделю.</p>
       <div class="field">
-        <label>Активность взрослых</label>
+        <span class="field-title">Активность взрослых</span>
         <div class="seg">
           ${Object.entries(ACTIVITY_LABELS)
             .map(
@@ -221,14 +289,14 @@ function renderSettings(state) {
         </div>
       </div>
       <div class="field">
-        <label>Местная кухня</label>
+        <span class="field-title">Местная кухня</span>
         <div class="seg">
           <button type="button" data-local="1" class="${s.preferLocal ? "on" : ""}">Больше башкирских и татарских блюд</button>
           <button type="button" data-local="0" class="${!s.preferLocal ? "on" : ""}">Нейтрально</button>
         </div>
       </div>
       <div class="field">
-        <label>Месяц сезона</label>
+        <span class="field-title">Месяц сезона</span>
         <select data-month>
           ${MONTH_NAMES.map(
             (name, i) =>
@@ -237,11 +305,13 @@ function renderSettings(state) {
         </select>
       </div>
       <div class="field">
-        <label>Не любим / не берём</label>
+        <span class="field-title">Не любим / не берём</span>
+        <p class="lede">Отмеченные продукты не попадут в меню. Креветки выключены всегда — аллергия у дочери.</p>
         <div class="check-grid">
           ${DISLIKE_OPTIONS.map((opt) => {
-            const on = s.disliked.includes(opt.id);
-            return `<label><input type="checkbox" data-dislike="${opt.id}" ${on ? "checked" : ""} /> ${opt.label}</label>`;
+            const on = opt.locked || s.disliked.includes(opt.id);
+            const note = opt.note ? ` <em>(${escapeHtml(opt.note)})</em>` : "";
+            return `<label class="${opt.locked ? "locked" : ""}"><input type="checkbox" data-dislike="${opt.id}" ${on ? "checked" : ""} ${opt.locked ? "disabled" : ""} /> ${escapeHtml(opt.label)}${note}</label>`;
           }).join("")}
         </div>
       </div>

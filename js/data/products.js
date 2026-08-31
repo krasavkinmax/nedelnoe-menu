@@ -9,6 +9,11 @@ export const PRODUCTS = {
   liver: { id: "liver", name: "Печень говяжья", category: "meat", kcal: 127, p: 18, f: 4, c: 5, pricePerKg: 280 },
   fishFillet: { id: "fishFillet", name: "Филе минтая", category: "fish", kcal: 72, p: 16, f: 1, c: 0, pricePerKg: 250 },
   pike: { id: "pike", name: "Судак / щука", category: "fish", kcal: 84, p: 18, f: 1, c: 0, pricePerKg: 420 },
+  shrimp: { id: "shrimp", name: "Креветки", category: "fish", kcal: 99, p: 24, f: 0.3, c: 0, pricePerKg: 900 },
+  pork: { id: "pork", name: "Свинина", category: "meat", kcal: 242, p: 16, f: 21, c: 0, pricePerKg: 380 },
+  nuts: { id: "nuts", name: "Орехи", category: "grocery", kcal: 654, p: 15, f: 61, c: 7, pricePerKg: 800 },
+  lemon: { id: "lemon", name: "Лимон / цитрусовые", category: "fruit", kcal: 29, p: 1, f: 0.3, c: 3, pricePerKg: 180 },
+  chocolate: { id: "chocolate", name: "Шоколад", category: "grocery", kcal: 540, p: 6, f: 31, c: 57, pricePerKg: 700 },
 
   milk: { id: "milk", name: "Молоко 2,5%", category: "dairy", kcal: 52, p: 3, f: 2.5, c: 5, pricePerKg: 80 },
   kefir: { id: "kefir", name: "Кефир 2,5%", category: "dairy", kcal: 50, p: 3, f: 2.5, c: 4, pricePerKg: 90 },

@@ -3,6 +3,7 @@ import { generateWeek, replaceMeal } from "./engine/generator.js";
 import { recipeCost } from "./engine/nutrition.js";
 import { formatRub } from "./engine/shopping.js";
 import { render } from "./ui/render.js";
+import { DISLIKE_OPTIONS, ALLERGY_EXCLUDE } from "./data/family.js";
 
 const root = document.getElementById("app");
 const state = initialState();
@@ -53,11 +54,26 @@ const actions = {
     persist();
   },
   toggleDislike(id) {
+    const opt = DISLIKE_OPTIONS.find((o) => o.id === id);
+    if (opt?.locked) return;
     const set = new Set(state.settings.disliked);
     if (set.has(id)) set.delete(id);
     else set.add(id);
+    for (const allergy of ALLERGY_EXCLUDE) set.add(allergy);
     state.settings.disliked = [...set];
     persist();
+  },
+  setDay(index) {
+    state.selectedDay = index;
+    persist();
+  },
+  openRecipe(dayIndex, slot) {
+    state.recipeOpen = { dayIndex, slot };
+    paint();
+  },
+  closeRecipe() {
+    state.recipeOpen = null;
+    paint();
   },
 };
 
