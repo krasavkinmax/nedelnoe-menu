@@ -69,6 +69,18 @@ h1 {
   line-height: 1.15;
 }
 
+.app-version {
+  display: inline-block;
+  margin: 0 0 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 .lede {
   margin: 0;
   color: var(--muted);
@@ -452,6 +464,11 @@ h1 {
   color: var(--terra-dark);
 }
 
+.tag.soup {
+  background: #e4eef0;
+  color: #2f585f;
+}
+
 .meal-skipped {
   background: #f7f1e8;
   opacity: 0.92;
@@ -644,6 +661,165 @@ h1 {
   margin: 8px 0 18px;
 }
 
+.ing-star {
+  color: var(--terra);
+  font-weight: 800;
+}
+
+body.has-report {
+  overflow: hidden;
+}
+
+.replace-search {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 4px 0 12px;
+  background: #fff;
+}
+
+.pick-list {
+  display: grid;
+  gap: 8px;
+}
+
+.pick-item {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 14px;
+  padding: 10px 12px;
+  cursor: pointer;
+  min-height: 48px;
+}
+
+.pick-item.on {
+  border-color: var(--forest);
+  background: #eef5ea;
+}
+
+.pick-item.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pick-title {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.pick-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pick-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.report-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: var(--bg);
+  overflow: auto;
+  padding: 12px 12px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+.report-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  background: var(--bg);
+  padding: 8px 0 12px;
+}
+
+.report-toolbar .sheet-close {
+  margin-left: auto;
+}
+
+.report-paper {
+  max-width: 720px;
+  margin: 0 auto;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px 20px 32px;
+  box-shadow: var(--shadow);
+}
+
+.report-paper h1 {
+  font-size: 28px;
+}
+
+.report-paper h2 {
+  font-family: Georgia, serif;
+  font-size: 20px;
+  margin: 24px 0 8px;
+}
+
+.report-paper h3 {
+  margin: 16px 0 6px;
+}
+
+.report-list,
+.report-steps {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+
+.report-dish {
+  font-weight: 700;
+  margin: 12px 0 4px;
+}
+
+.report-child,
+.report-sub,
+.report-note,
+.report-foot {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.report-day {
+  break-inside: avoid;
+}
+
+@media print {
+  body {
+    background: #fff !important;
+  }
+  #app > :not(.report-overlay) {
+    display: none !important;
+  }
+  .report-toolbar {
+    display: none !important;
+  }
+  .report-overlay {
+    position: static;
+    inset: auto;
+    background: #fff;
+    padding: 0;
+    overflow: visible;
+  }
+  .report-paper {
+    border: 0;
+    box-shadow: none;
+    max-width: none;
+    padding: 0;
+  }
+}
+
 @media (max-width: 700px) {
   .topbar {
     grid-template-columns: 1fr;
@@ -652,7 +828,11 @@ h1 {
     grid-template-columns: 1fr;
   }
   #app {
-    padding: 16px 12px 80px;
+    padding: 14px 12px calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+  .day-pill {
+    min-height: 44px;
+    padding: 10px 4px;
   }
   .day-pill-hint {
     display: none;
@@ -663,5 +843,46 @@ h1 {
   .tab {
     flex: 1;
     text-align: center;
+    min-height: 40px;
+  }
+  .actions {
+    width: 100%;
+  }
+  .actions .btn {
+    flex: 1;
+    min-height: 44px;
+  }
+  [data-pdf-report] {
+    display: none;
+  }
+  .report-toolbar .btn {
+    flex: 1;
+    min-height: 44px;
+  }
+  .meal-actions .mini {
+    min-height: 36px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .sheet {
+    width: 100%;
+    max-height: min(92vh, 100dvh);
+    padding: 12px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  .sheet-head h2 {
+    font-size: 20px;
+  }
+  .ing-list li {
+    font-size: 15px;
+    padding: 8px 0;
+  }
+  .shop-item {
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .shop-item strong {
+    grid-column: 2;
+    justify-self: end;
   }
 }

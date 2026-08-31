@@ -14,17 +14,23 @@ import {
 import { PRODUCTS } from "../data/products.js";
 import { RECIPE_STEPS } from "../data/recipe-steps.js";
 import { RECIPE_LORE } from "../data/recipe-lore.js";
+import { adultOnlyNames } from "../data/recipes.js";
+import { listReplaceOptions } from "../engine/generator.js";
+import { renderReportInner } from "../engine/report.js";
+import { APP_VERSION } from "../version.js";
 import { recipeNutrition, recipeCost, roundNutrition, scaleNutrition } from "../engine/nutrition.js";
 import { buildShoppingList, formatRub } from "../engine/shopping.js";
 
 export function render(root, state, actions) {
   const targets = familyTargets(state.settings.activity);
+  document.body.classList.toggle("has-report", Boolean(state.reportOpen));
   const monthName = MONTH_NAMES[state.settings.month - 1];
   root.innerHTML = `
     <header class="topbar">
       <div>
         <p class="eyebrow">Республика Башкортостан · ${monthName}</p>
         <h1>Меню на неделю для семьи</h1>
+        <p class="app-version">Версия ${APP_VERSION}</p>
         <p class="lede">Сбалансированный рацион на троих: общие блюда и адаптированная порция для ребёнка 1,5 лет. Сезонные продукты и башкирская/татарская кухня.</p>
         <div class="family-row">
           ${targets.members
@@ -38,7 +44,7 @@ export function render(root, state, actions) {
       <div class="actions">
         <button class="btn btn-primary" data-act="generate">Составить меню</button>
         ${state.week ? `<button class="btn btn-ghost" data-act="generate">Пересобрать неделю</button>` : ""}
-        ${state.week ? `<button class="btn btn-ghost" data-act="export">Выгрузить меню</button>` : ""}
+        ${state.week ? `<button class="btn btn-ghost" data-act="export">Отчёт</button>` : ""}
       </div>
     </header>
 
@@ -52,17 +58,19 @@ export function render(root, state, actions) {
     ${state.tab === "menu" ? renderMenu(state, targets) : ""}
     ${state.tab === "shop" ? renderShop(state) : ""}
     ${state.tab === "settings" ? renderSettings(state) : ""}
+    ${state.replaceOpen ? renderReplaceSheet(state) : ""}
     ${state.recipeOpen ? renderRecipeSheet(state) : ""}
     ${state.recipeOpen && state.loreOpen ? renderLoreSheet(state) : ""}
+    ${state.reportOpen ? renderReport(state) : ""}
 
-    <p class="disclaimer">Меню носит ознакомительный характер и не заменяет консультацию педиатра или врача. Нормы ккал — ориентир по МР 2.3.1.0253-21 (активность можно сменить в настройках). Цены — оценка по Уфе/Стерлитамаку, не чек из магазина. Креветки исключены всегда: аллергия у дочери.</p>
+    <p class="disclaimer">Меню носит ознакомительный характер и не заменяет консультацию педиатра или врача. Нормы ккал — ориентир по МР 2.3.1.0253-21 (активность можно сменить в настройках). Цены — оценка по Уфе/Стерлитамаку, средний чек недели около 7 000 ₽. Ингредиенты со знаком * — только для взрослых. Креветки исключены всегда: аллергия у дочери.</p>
   `;
 
   root.querySelectorAll("[data-act='generate']").forEach((el) => {
     el.addEventListener("click", () => actions.generate());
   });
   root.querySelectorAll("[data-act='export']").forEach((el) => {
-    el.addEventListener("click", () => actions.exportPdf());
+    el.addEventListener("click", () => actions.openReport());
   });
   root.querySelectorAll("[data-tab]").forEach((el) => {
     el.addEventListener("click", () => actions.setTab(el.getAttribute("data-tab")));
@@ -113,6 +121,36 @@ export function render(root, state, actions) {
   });
   root.querySelectorAll("[data-restore]").forEach((el) => {
     el.addEventListener("click", () => actions.restore(+el.dataset.day, el.dataset.restore));
+  });
+  root.querySelectorAll("[data-close-replace]").forEach((el) => {
+    el.addEventListener("click", () => actions.closeReplace());
+  });
+  root.querySelectorAll("[data-pick-recipe]").forEach((el) => {
+    el.addEventListener("click", () => actions.pickReplace(el.dataset.pickRecipe));
+  });
+  const replaceInput = root.querySelector("[data-replace-query]");
+  if (replaceInput) {
+    replaceInput.addEventListener("input", () => actions.setReplaceQuery(replaceInput.value));
+    if (state.replaceFocus) {
+      replaceInput.focus();
+      const pos = replaceInput.value.length;
+      replaceInput.setSelectionRange(pos, pos);
+    }
+  }
+  root.querySelectorAll("[data-close-report]").forEach((el) => {
+    el.addEventListener("click", () => actions.closeReport());
+  });
+  root.querySelectorAll("[data-print-report]").forEach((el) => {
+    el.addEventListener("click", () => actions.printReport());
+  });
+  root.querySelectorAll("[data-share-report]").forEach((el) => {
+    el.addEventListener("click", () => actions.shareReport());
+  });
+  root.querySelectorAll("[data-html-report]").forEach((el) => {
+    el.addEventListener("click", () => actions.downloadReportHtml());
+  });
+  root.querySelectorAll("[data-pdf-report]").forEach((el) => {
+    el.addEventListener("click", () => actions.exportPdf());
   });
   root.querySelectorAll("[data-twodays]").forEach((el) => {
     el.addEventListener("click", () => actions.setCookTwoDays(el.dataset.twodays === "1"));
@@ -212,6 +250,7 @@ function renderMeal(day, slot, state) {
         <span class="tag">${recipe.minutes} мин</span>
         <span class="tag">${formatRub(cost)}</span>
         <span class="tag ${local ? "local" : ""}">${cuisineLabel}</span>
+        ${recipe.soup ? `<span class="tag soup">суп</span>` : ""}
         ${leftover ? `<span class="tag leftover">на ${leftover}</span>` : ""}
       </div>
       <p class="child-note"><strong>Для ребёнка:</strong> ${escapeHtml(recipe.childNote)}</p>
@@ -231,12 +270,14 @@ function renderRecipeSheet(state) {
   if (!recipe) return "";
   const steps = RECIPE_STEPS[recipe.id] || ["Подробный рецепт для этого блюда скоро появится."];
   const scale = portionsFor(recipe);
+  const adultNames = adultOnlyNames(recipe, PRODUCTS);
   const ingredients = recipe.ingredients
     .map((ing) => {
       const prod = PRODUCTS[ing.productId];
       if (!prod) return "";
       const grams = Math.round(ing.grams * scale);
-      return `<li><span>${escapeHtml(prod.name)}</span><strong>${grams} г</strong></li>`;
+      const star = ing.adultOnly ? ` <span class="ing-star">*</span>` : "";
+      return `<li><span>${escapeHtml(prod.name)}${star}</span><strong>${grams} г</strong></li>`;
     })
     .join("");
   return `
@@ -257,6 +298,11 @@ function renderRecipeSheet(state) {
       <p class="child-note"><strong>Для ребёнка:</strong> ${escapeHtml(recipe.childNote)}</p>
       <h3>Ингредиенты</h3>
       <ul class="ing-list">${ingredients}</ul>
+      ${
+        adultNames.length
+          ? `<p class="ing-note">* только для взрослых, в детскую тарелку не кладём: ${escapeHtml(adultNames.join(", "))}.</p>`
+          : ""
+      }
       <h3>Как приготовить</h3>
       <ol class="steps">
         ${steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}
@@ -273,6 +319,7 @@ function renderLoreSheet(state) {
     description: "Домашнее блюдо семейного стола.",
     history: "Краткая историческая справка для этого рецепта пока не собрана.",
   };
+  const adultNames = adultOnlyNames(recipe, PRODUCTS);
   return `
     <div class="sheet-backdrop lore-backdrop" data-close-lore="1"></div>
     <aside class="sheet lore-sheet" role="dialog" aria-label="Справка о блюде">
@@ -288,6 +335,12 @@ function renderLoreSheet(state) {
       <p class="lore-text">${escapeHtml(lore.description)}</p>
       <h3>Откуда оно</h3>
       <p class="lore-text">${escapeHtml(lore.history)}</p>
+      ${
+        adultNames.length
+          ? `<h3>Что не кладём ребёнку</h3>
+             <p class="lore-text">Ингредиенты со знаком * есть в рецепте, но только для взрослых: ${escapeHtml(adultNames.join(", "))}. В детскую тарелку их не добавляем.</p>`
+          : ""
+      }
     </aside>
   `;
 }
@@ -324,7 +377,7 @@ function renderShop(state) {
         <h2>Список покупок на неделю</h2>
         <div class="price-xl">${formatRub(list.total)}</div>
       </div>
-      <p class="lede">Оценка по средним ценам Уфы и Стерлитамака. Порции: двое взрослых и ребёнок (0,4 взрослой порции).</p>
+      <p class="lede">Оценка по средним ценам Уфы и Стерлитамака, ориентир недели около 7 000 ₽. Порции: двое взрослых и ребёнок (0,4 взрослой порции). Ингредиенты со знаком * тоже в списке — они для взрослых.</p>
       ${list.groups
         .map(
           (g) => `
@@ -375,7 +428,7 @@ function renderSettings(state) {
       </div>
       <div class="field">
         <span class="field-title">Обед и ужин на два дня</span>
-        <p class="lede">Готовим обед и ужин сразу на пн–вт, ср–чт, пт–сб. Воскресенье — однодневное. После смены нажмите «Составить меню».</p>
+        <p class="lede">Готовим обед и ужин сразу на пн–вт, ср–чт, пт–сб. Воскресенье — однодневное. В каждой паре одно из блюд предпочтительно суп. После смены нажмите «Составить меню».</p>
         <div class="seg">
           <button type="button" data-twodays="1" class="${s.cookTwoDays ? "on" : ""}">Включено</button>
           <button type="button" data-twodays="0" class="${!s.cookTwoDays ? "on" : ""}">Выключено</button>
@@ -402,6 +455,76 @@ function renderSettings(state) {
         </div>
       </div>
     </section>
+  `;
+}
+
+function renderReplaceSheet(state) {
+  const { dayIndex, slot } = state.replaceOpen;
+  const current = state.week?.days[dayIndex]?.meals[slot];
+  if (!current) return "";
+  const q = (state.replaceQuery || "").trim().toLowerCase();
+  const options = listReplaceOptions(state.week, dayIndex, slot, state.settings).filter((opt) =>
+    q ? opt.recipe.title.toLowerCase().includes(q) : true
+  );
+  const cuisineLabel = { bashkir: "башкирское", tatar: "татарское", ru: "домашнее" };
+  return `
+    <div class="sheet-backdrop" data-close-replace="1"></div>
+    <aside class="sheet replace-sheet" role="dialog" aria-label="Замена блюда">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <div>
+          <p class="meal-label">${MEAL_LABELS[slot]} · ${state.week.days[dayIndex].weekday}</p>
+          <h2>Заменить блюдо</h2>
+          <p class="sheet-meta">Сейчас: ${escapeHtml(current.title)}. Все блюда категории «${MEAL_LABELS[slot]}».</p>
+        </div>
+        <button type="button" class="sheet-close" data-close-replace="1" aria-label="Закрыть">×</button>
+      </div>
+      <input type="search" class="replace-search" data-replace-query placeholder="Найти блюдо" value="${escapeHtml(state.replaceQuery || "")}" />
+      <div class="pick-list">
+        ${
+          options.length
+            ? options
+                .map((opt) => {
+                  const r = opt.recipe;
+                  const disabled = opt.hasAllergy;
+                  const notes = [
+                    opt.current ? "сейчас" : "",
+                    r.soup ? "суп" : "",
+                    opt.cheaper && !opt.current ? "дешевле" : "",
+                    !opt.inSeason ? "не сезон" : "",
+                    opt.disliked && !opt.hasAllergy ? "в исключениях" : "",
+                    opt.conflict ? "тот же продукт, что в соседнем приёме" : "",
+                    opt.hasAllergy ? "аллергия" : "",
+                  ].filter(Boolean);
+                  return `
+                    <button type="button" class="pick-item ${opt.current ? "on" : ""} ${disabled ? "disabled" : ""}" data-pick-recipe="${r.id}" ${disabled ? "disabled" : ""}>
+                      <span class="pick-title">${escapeHtml(r.title)}</span>
+                      <span class="pick-meta">${r.minutes} мин · ${formatRub(recipeCost(r))} · ${cuisineLabel[r.cuisine] || ""}</span>
+                      ${notes.length ? `<span class="pick-notes">${notes.map((n) => `<span class="tag">${escapeHtml(n)}</span>`).join("")}</span>` : ""}
+                    </button>`;
+                })
+                .join("")
+            : `<p class="lede">Ничего не найдено.</p>`
+        }
+      </div>
+    </aside>
+  `;
+}
+
+function renderReport(state) {
+  return `
+    <div class="report-overlay">
+      <div class="report-toolbar">
+        <button type="button" class="btn btn-primary" data-print-report>Печать</button>
+        <button type="button" class="btn btn-ghost" data-share-report>Поделиться</button>
+        <button type="button" class="btn btn-ghost" data-html-report>Скачать HTML</button>
+        <button type="button" class="btn btn-ghost" data-pdf-report>PDF</button>
+        <button type="button" class="sheet-close" data-close-report aria-label="Закрыть">×</button>
+      </div>
+      <div class="report-paper">
+        ${renderReportInner(state.week, state.settings)}
+      </div>
+    </div>
   `;
 }
 

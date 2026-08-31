@@ -43,6 +43,10 @@ export function initialState() {
     selectedDay: saved?.selectedDay ?? mondayIndex(),
     recipeOpen: null,
     loreOpen: false,
+    replaceOpen: null,
+    replaceQuery: "",
+    replaceFocus: false,
+    reportOpen: false,
     toast: null,
   };
 }

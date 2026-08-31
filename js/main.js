@@ -1,6 +1,7 @@
 import { initialState, saveState } from "./state.js";
-import { generateWeek, replaceMeal, skipMeal, restoreMeal } from "./engine/generator.js";
+import { generateWeek, replaceMeal, replaceMealById, skipMeal, restoreMeal } from "./engine/generator.js";
 import { exportWeekPdf } from "./engine/pdf-export.js";
+import { buildStandaloneHtml, shareReport, downloadTextFile } from "./engine/report.js";
 import { recipeCost } from "./engine/nutrition.js";
 import { formatRub } from "./engine/shopping.js";
 import { render } from "./ui/render.js";
@@ -15,26 +16,110 @@ const actions = {
     state.week = generateWeek(state.settings, state.seed);
     state.shopChecked = {};
     state.tab = "menu";
+    state.replaceOpen = null;
+    state.reportOpen = false;
     state.toast = state.settings.cookTwoDays
-      ? "Неделя собрана: обед и ужин на пн–вт, ср–чт, пт–сб готовим сразу на два дня. Воскресенье — однодневное."
+      ? "Неделя собрана: обед и ужин на пн–вт, ср–чт, пт–сб — сразу на два дня, в паре одно блюдо предпочтительно суп. Воскресенье — однодневное."
       : "Новая неделя собрана. Можно заменить любое блюдо или выбрать более дешёвый вариант.";
     persist();
   },
   replace(dayIndex, slot, mode) {
     if (!state.week) return;
+    if (mode !== "cheaper") {
+      state.replaceOpen = { dayIndex, slot };
+      state.replaceQuery = "";
+      state.replaceFocus = false;
+      state.recipeOpen = null;
+      state.loreOpen = false;
+      paint();
+      return;
+    }
     const next = replaceMeal(state.week, dayIndex, slot, state.settings, mode);
     if (!next.lastReplace?.to || next.lastReplace.to.id === state.week.days[dayIndex].meals[slot]?.id) {
       state.toast = "Подходящей замены в каталоге нет — попробуйте другое блюдо или снимите ограничения в настройках.";
       paint();
       return;
     }
-    state.week = next;
-    const { from, to, saved } = next.lastReplace;
-    const cheaper = saved > 5;
-    state.toast = cheaper
-      ? `«${to.title}» вместо «${from.title}». Экономия около ${formatRub(saved)}.`
-      : `«${to.title}» вместо «${from.title}». Было ${formatRub(recipeCost(from))}, стало ${formatRub(recipeCost(to))}.`;
-    persist();
+    applyReplace(next);
+  },
+  closeReplace() {
+    state.replaceOpen = null;
+    state.replaceQuery = "";
+    state.replaceFocus = false;
+    paint();
+  },
+  setReplaceQuery(value) {
+    state.replaceQuery = value;
+    state.replaceFocus = true;
+    paint();
+  },
+  pickReplace(recipeId) {
+    if (!state.week || !state.replaceOpen) return;
+    const { dayIndex, slot } = state.replaceOpen;
+    const currentId = state.week.days[dayIndex].meals[slot]?.id;
+    if (recipeId === currentId) {
+      state.replaceOpen = null;
+      paint();
+      return;
+    }
+    const next = replaceMealById(state.week, dayIndex, slot, state.settings, recipeId);
+    if (!next.lastReplace?.to || next.lastReplace.to.id === currentId) {
+      state.toast = "Это блюдо сюда поставить нельзя.";
+      paint();
+      return;
+    }
+    state.replaceOpen = null;
+    state.replaceQuery = "";
+    applyReplace(next);
+  },
+  openReport() {
+    if (!state.week) {
+      state.toast = "Сначала составьте меню.";
+      paint();
+      return;
+    }
+    state.reportOpen = true;
+    state.replaceOpen = null;
+    state.recipeOpen = null;
+    state.loreOpen = false;
+    paint();
+  },
+  closeReport() {
+    state.reportOpen = false;
+    paint();
+  },
+  printReport() {
+    window.print();
+  },
+  async shareReport() {
+    if (!state.week) return;
+    const result = await shareReport(state.week, state.settings);
+    if (result === "shared") state.toast = "Отчёт отправлен.";
+    else if (result === "download") state.toast = "Файл HTML сохранён — его можно открыть и распечатать.";
+    paint();
+  },
+  downloadReportHtml() {
+    if (!state.week) return;
+    downloadTextFile("Menyu-na-nedelyu.html", buildStandaloneHtml(state.week, state.settings), "text/html");
+    state.toast = "Скачан файл HTML. На телефоне откройте его и нажмите «Поделиться» или «Печать».";
+    paint();
+  },
+  async exportPdf() {
+    if (!state.week) {
+      state.toast = "Сначала составьте меню.";
+      paint();
+      return;
+    }
+    state.toast = "Готовим PDF…";
+    paint();
+    try {
+      await exportWeekPdf(state.week, state.settings);
+      state.toast = "Файл «Menyu-na-nedelyu.pdf» скачан. На компьютере он в загрузках; на телефоне PDF часто не создаётся — лучше печать или HTML.";
+    } catch (err) {
+      state.toast = "PDF на этом устройстве недоступен. Откройте отчёт и нажмите «Печать» или скачайте HTML.";
+      console.error(err);
+    }
+    paint();
   },
   setTab(tab) {
     state.tab = tab;
@@ -105,24 +190,17 @@ const actions = {
     state.settings.cookTwoDays = value;
     persist();
   },
-  async exportPdf() {
-    if (!state.week) {
-      state.toast = "Сначала составьте меню.";
-      paint();
-      return;
-    }
-    state.toast = "Готовим PDF…";
-    paint();
-    try {
-      await exportWeekPdf(state.week, state.settings);
-      state.toast = "Файл «Menyu-na-nedelyu.pdf» скачан. На телефоне он обычно в папке «Загрузки».";
-    } catch (err) {
-      state.toast = "Не удалось скачать PDF (нужен интернет для библиотеки). Попробуйте ещё раз на Wi‑Fi.";
-      console.error(err);
-    }
-    paint();
-  },
 };
+
+function applyReplace(next) {
+  state.week = next;
+  const { from, to, saved } = next.lastReplace;
+  const cheaper = saved > 5;
+  state.toast = cheaper
+    ? `«${to.title}» вместо «${from.title}». Экономия около ${formatRub(saved)}.`
+    : `«${to.title}» вместо «${from.title}». Было ${formatRub(recipeCost(from))}, стало ${formatRub(recipeCost(to))}.`;
+  persist();
+}
 
 function persist() {
   saveState(state);

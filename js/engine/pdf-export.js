@@ -1,6 +1,7 @@
 import { MEAL_SLOTS, MEAL_LABELS, MONTH_NAMES, leftoverPairLabel, isSkipped, portionsFor } from "../data/family.js";
 import { PRODUCTS } from "../data/products.js";
 import { RECIPE_STEPS } from "../data/recipe-steps.js";
+import { adultOnlyNames } from "../data/recipes.js";
 import { buildShoppingList, formatRub } from "./shopping.js";
 
 function loadScript(src) {
@@ -68,10 +69,11 @@ export async function exportWeekPdf(week, settings) {
       const ings = recipe.ingredients
         .map((ing) => {
           const prod = PRODUCTS[ing.productId];
-          return prod ? `${prod.name} — ${Math.round(ing.grams * scale)} г` : "";
+          return prod ? `${prod.name}${ing.adultOnly ? " *" : ""} — ${Math.round(ing.grams * scale)} г` : "";
         })
         .filter(Boolean);
       const steps = RECIPE_STEPS[recipe.id] || [];
+      const adultNames = adultOnlyNames(recipe, PRODUCTS);
       content.push({
         text: `${MEAL_LABELS[slot]}: ${recipe.title}${leftover ? ` (готовим на ${leftover})` : ""} · ${recipe.minutes} мин`,
         style: "dish",
@@ -80,6 +82,14 @@ export async function exportWeekPdf(week, settings) {
       content.push({ text: `Для ребёнка: ${recipe.childNote}`, italics: true, fontSize: 9, margin: [0, 0, 0, 4] });
       content.push({ text: "Ингредиенты", bold: true, fontSize: 10 });
       content.push({ ul: ings, fontSize: 9, margin: [0, 0, 0, 4] });
+      if (adultNames.length) {
+        content.push({
+          text: `* только для взрослых: ${adultNames.join(", ")}. В детскую тарелку не кладём.`,
+          italics: true,
+          fontSize: 8,
+          margin: [0, 0, 0, 4],
+        });
+      }
       if (steps.length) {
         content.push({ text: "Как приготовить", bold: true, fontSize: 10 });
         content.push({ ol: steps, fontSize: 9, margin: [0, 0, 0, 8] });
@@ -89,7 +99,7 @@ export async function exportWeekPdf(week, settings) {
   }
 
   content.push({
-    text: "Меню носит ознакомительный характер и не заменяет консультацию врача. Креветки исключены: аллергия у дочери.",
+    text: "Меню носит ознакомительный характер и не заменяет консультацию врача. Ингредиенты со знаком * — только для взрослых. Креветки исключены: аллергия у дочери.",
     style: "foot",
     margin: [0, 18, 0, 0],
   });
