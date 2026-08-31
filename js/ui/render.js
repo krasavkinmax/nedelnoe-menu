@@ -11,6 +11,7 @@ import {
 } from "../data/family.js";
 import { PRODUCTS } from "../data/products.js";
 import { RECIPE_STEPS } from "../data/recipe-steps.js";
+import { RECIPE_LORE } from "../data/recipe-lore.js";
 import { recipeNutrition, recipeCost, roundNutrition, scaleNutrition } from "../engine/nutrition.js";
 import { buildShoppingList, formatRub } from "../engine/shopping.js";
 
@@ -49,6 +50,7 @@ export function render(root, state, actions) {
     ${state.tab === "shop" ? renderShop(state) : ""}
     ${state.tab === "settings" ? renderSettings(state) : ""}
     ${state.recipeOpen ? renderRecipeSheet(state) : ""}
+    ${state.recipeOpen && state.loreOpen ? renderLoreSheet(state) : ""}
 
     <p class="disclaimer">Меню носит ознакомительный характер и не заменяет консультацию педиатра или врача. Нормы ккал — ориентир по МР 2.3.1.0253-21 (активность можно сменить в настройках). Цены — оценка по Уфе/Стерлитамаку, не чек из магазина. Креветки исключены всегда: аллергия у дочери.</p>
   `;
@@ -87,6 +89,18 @@ export function render(root, state, actions) {
   });
   root.querySelectorAll("[data-close-recipe]").forEach((el) => {
     el.addEventListener("click", () => actions.closeRecipe());
+  });
+  root.querySelectorAll("[data-open-lore]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      actions.openLore();
+    });
+  });
+  root.querySelectorAll("[data-close-lore]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      actions.closeLore();
+    });
   });
 }
 
@@ -201,7 +215,10 @@ function renderRecipeSheet(state) {
           <h2>${escapeHtml(recipe.title)}</h2>
           <p class="sheet-meta">${recipe.minutes} мин · на семью из трёх человек</p>
         </div>
-        <button type="button" class="sheet-close" data-close-recipe="1" aria-label="Закрыть">×</button>
+        <div class="sheet-head-actions">
+          <button type="button" class="mini mini-primary" data-open-lore="1">Справка</button>
+          <button type="button" class="sheet-close" data-close-recipe="1" aria-label="Закрыть">×</button>
+        </div>
       </div>
       <p class="child-note"><strong>Для ребёнка:</strong> ${escapeHtml(recipe.childNote)}</p>
       <h3>Ингредиенты</h3>
@@ -210,6 +227,33 @@ function renderRecipeSheet(state) {
       <ol class="steps">
         ${steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}
       </ol>
+    </aside>
+  `;
+}
+
+function renderLoreSheet(state) {
+  const { dayIndex, slot } = state.recipeOpen;
+  const recipe = state.week?.days[dayIndex]?.meals[slot];
+  if (!recipe) return "";
+  const lore = RECIPE_LORE[recipe.id] || {
+    description: "Домашнее блюдо семейного стола.",
+    history: "Краткая историческая справка для этого рецепта пока не собрана.",
+  };
+  return `
+    <div class="sheet-backdrop lore-backdrop" data-close-lore="1"></div>
+    <aside class="sheet lore-sheet" role="dialog" aria-label="Справка о блюде">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <div>
+          <p class="meal-label">Справка</p>
+          <h2>${escapeHtml(recipe.title)}</h2>
+        </div>
+        <button type="button" class="sheet-close" data-close-lore="1" aria-label="Закрыть справку">×</button>
+      </div>
+      <h3>О блюде</h3>
+      <p class="lore-text">${escapeHtml(lore.description)}</p>
+      <h3>Откуда оно</h3>
+      <p class="lore-text">${escapeHtml(lore.history)}</p>
     </aside>
   `;
 }

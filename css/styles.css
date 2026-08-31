@@ -275,6 +275,13 @@ h1 {
   font-size: 13px;
 }
 
+.sheet-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .sheet-close {
   border: 0;
   background: #efe6d8;
@@ -284,6 +291,23 @@ h1 {
   font-size: 22px;
   cursor: pointer;
   line-height: 1;
+}
+
+.lore-backdrop {
+  z-index: 24;
+  background: rgba(44, 36, 28, 0.35);
+}
+
+.lore-sheet {
+  z-index: 25;
+  max-height: 80vh;
+}
+
+.lore-text {
+  margin: 0 0 8px;
+  line-height: 1.55;
+  font-size: 15px;
+  color: #3a322a;
 }
 
 .sheet h3 {

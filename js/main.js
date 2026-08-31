@@ -69,10 +69,21 @@ const actions = {
   },
   openRecipe(dayIndex, slot) {
     state.recipeOpen = { dayIndex, slot };
+    state.loreOpen = false;
     paint();
   },
   closeRecipe() {
     state.recipeOpen = null;
+    state.loreOpen = false;
+    paint();
+  },
+  openLore() {
+    if (!state.recipeOpen) return;
+    state.loreOpen = true;
+    paint();
+  },
+  closeLore() {
+    state.loreOpen = false;
     paint();
   },
 };

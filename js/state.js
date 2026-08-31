@@ -42,6 +42,7 @@ export function initialState() {
     tab: saved?.tab ?? "menu",
     selectedDay: saved?.selectedDay ?? mondayIndex(),
     recipeOpen: null,
+    loreOpen: false,
     toast: null,
   };
 }
