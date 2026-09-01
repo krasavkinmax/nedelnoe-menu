@@ -302,6 +302,21 @@ h1 {
   margin: 4px auto 12px;
 }
 
+.recipe-photo {
+  margin: 0 0 14px;
+  border-radius: 14px;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  background: #efe6d8;
+}
+
+.recipe-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .sheet-head {
   display: flex;
   justify-content: space-between;

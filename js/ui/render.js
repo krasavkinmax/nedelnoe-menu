@@ -317,6 +317,9 @@ function renderRecipeSheet(state) {
     <div class="sheet-backdrop" data-close-recipe="1"></div>
     <aside class="sheet" role="dialog" aria-label="Рецепт">
       <div class="sheet-handle"></div>
+      <figure class="recipe-photo">
+        <img src="./img/recipes/${recipe.id}.jpg" alt="${escapeHtml(recipe.title)}" width="1200" height="900" loading="lazy" />
+      </figure>
       <div class="sheet-head">
         <div>
           <p class="meal-label">${MEAL_LABELS[slot]} · ${state.week.days[dayIndex].weekday}</p>
