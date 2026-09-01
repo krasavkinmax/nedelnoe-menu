@@ -1,17 +1,39 @@
 import { PRODUCTS, CATEGORY_LABELS, CATEGORY_ORDER } from "../data/products.js";
-import { portionsFor } from "../data/family.js";
+import { portionsFor, cookSessionsCount, cookSessionGroups, skipKey } from "../data/family.js";
 
-export function buildShoppingList(week) {
+export function buildShoppingList(week, settings) {
   const grams = new Map();
   if (!week) return { groups: [], total: 0, items: [] };
 
-  for (const day of week.days) {
-    for (const slot of Object.keys(day.meals)) {
-      const recipe = day.meals[slot];
-      if (!recipe) continue;
-      if (week.skipped?.[`${day.index}:${slot}`]) continue;
-      for (const ing of recipe.ingredients) {
-        grams.set(ing.productId, (grams.get(ing.productId) || 0) + ing.grams * portionsFor(recipe));
+  const addRecipe = (recipe, multiplier) => {
+    if (!recipe || multiplier <= 0) return;
+    for (const ing of recipe.ingredients) {
+      grams.set(ing.productId, (grams.get(ing.productId) || 0) + ing.grams * portionsFor(recipe) * multiplier);
+    }
+  };
+
+  const skipped = (dayIndex, slot) => Boolean(week.skipped?.[skipKey(dayIndex, slot)]);
+
+  if (!cookSessionsCount(settings)) {
+    for (const day of week.days) {
+      for (const slot of Object.keys(day.meals)) {
+        if (skipped(day.index, slot)) continue;
+        addRecipe(day.meals[slot], 1);
+      }
+    }
+  } else {
+    for (const day of week.days) {
+      for (const slot of ["breakfast", "snackAm", "snackPm"]) {
+        if (skipped(day.index, slot)) continue;
+        addRecipe(day.meals[slot], 1);
+      }
+    }
+    for (const group of cookSessionGroups(settings)) {
+      const cookDay = week.days[group[0]];
+      if (!cookDay) continue;
+      for (const slot of ["lunch", "dinner"]) {
+        const liveDays = group.filter((d) => !skipped(d, slot)).length;
+        addRecipe(cookDay.meals[slot], liveDays);
       }
     }
   }

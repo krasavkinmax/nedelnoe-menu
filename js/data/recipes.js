@@ -1288,6 +1288,51 @@ export const RECIPES = [
   },
 ];
 
+const COOK_BY_ID = {
+  "chicken-noodle-soup": { heat: "stove", attention: "passive", prepKeys: ["chicken", "onion", "carrot", "potato"], activeMinutes: 15, passiveMinutes: 30, keepsDays: 3 },
+  borscht: { heat: "stove", attention: "passive", prepKeys: ["beef", "onion", "carrot", "potato", "cabbage", "beet"], activeMinutes: 20, passiveMinutes: 30, keepsDays: 4 },
+  shchi: { heat: "stove", attention: "passive", prepKeys: ["chicken", "onion", "carrot", "potato", "cabbage"], activeMinutes: 15, passiveMinutes: 30, keepsDays: 4 },
+  kullama: { heat: "stove", attention: "passive", prepKeys: ["beef", "onion", "carrot"], activeMinutes: 20, passiveMinutes: 50, keepsDays: 3 },
+  "goulash-buckwheat": { heat: "stove", attention: "passive", prepKeys: ["beef", "onion", "carrot", "cabbage"], activeMinutes: 20, passiveMinutes: 40, keepsDays: 3 },
+  "chicken-zucchini": { heat: "stove", attention: "passive", prepKeys: ["chicken", "onion", "carrot", "zucchini"], activeMinutes: 15, passiveMinutes: 25, keepsDays: 3 },
+  "baked-fish-veg": { heat: "oven", attention: "passive", prepKeys: ["fish", "potato", "carrot", "zucchini"], activeMinutes: 12, passiveMinutes: 23, keepsDays: 2 },
+  "pea-soup": { heat: "stove", attention: "passive", prepKeys: ["chicken", "onion", "carrot", "potato"], activeMinutes: 15, passiveMinutes: 55, keepsDays: 4 },
+  echpochmak: { heat: "oven", attention: "passive", prepKeys: ["beef", "potato", "onion"], activeMinutes: 25, passiveMinutes: 30, keepsDays: 2 },
+  "vak-belish": { heat: "oven", attention: "passive", prepKeys: ["chicken", "potato", "onion"], activeMinutes: 25, passiveMinutes: 35, keepsDays: 2 },
+  "turkey-buckwheat-beet": { heat: "stove", attention: "active", prepKeys: ["turkey", "carrot", "beet"], activeMinutes: 25, passiveMinutes: 15, keepsDays: 2 },
+  "fish-soup": { heat: "stove", attention: "passive", prepKeys: ["fish", "potato", "carrot", "onion"], activeMinutes: 15, passiveMinutes: 25, keepsDays: 2 },
+  "lentil-soup": { heat: "stove", attention: "passive", prepKeys: ["onion", "carrot", "potato"], activeMinutes: 15, passiveMinutes: 30, keepsDays: 4 },
+  "beef-potato-stew": { heat: "stove", attention: "passive", prepKeys: ["beef", "potato", "carrot", "onion", "cabbage"], activeMinutes: 20, passiveMinutes: 50, keepsDays: 3 },
+  "stuffed-pepper": { heat: "stove", attention: "passive", prepKeys: ["chicken", "onion", "carrot", "pepper"], activeMinutes: 20, passiveMinutes: 35, keepsDays: 3 },
+  "steam-cutlets-mash": { heat: "stove", attention: "active", prepKeys: ["chicken", "potato", "carrot"], activeMinutes: 25, passiveMinutes: 15, keepsDays: 2 },
+  "chicken-salma": { heat: "stove", attention: "passive", prepKeys: ["chicken", "potato", "carrot", "onion"], activeMinutes: 20, passiveMinutes: 30, keepsDays: 3 },
+  "beef-azu": { heat: "stove", attention: "passive", prepKeys: ["beef", "potato", "onion", "carrot"], activeMinutes: 20, passiveMinutes: 50, keepsDays: 3 },
+  "okroshka-kefir": { heat: "none", attention: "active", prepKeys: ["chicken", "potato"], activeMinutes: 25, passiveMinutes: 0, keepsDays: 2 },
+  "lazy-golubtsy": { heat: "stove", attention: "passive", prepKeys: ["chicken", "onion", "carrot", "cabbage"], activeMinutes: 20, passiveMinutes: 30, keepsDays: 3 },
+  "steamed-fish-veg": { heat: "stove", attention: "active", prepKeys: ["fish", "zucchini", "carrot", "potato"], activeMinutes: 20, passiveMinutes: 10, keepsDays: 2 },
+  "chickpea-stew": { heat: "stove", attention: "passive", prepKeys: ["onion", "carrot", "zucchini"], activeMinutes: 15, passiveMinutes: 30, keepsDays: 3 },
+  "chicken-salad": { heat: "stove", attention: "active", prepKeys: ["chicken"], activeMinutes: 20, passiveMinutes: 5, keepsDays: 2 },
+  "buckwheat-liver": { heat: "stove", attention: "active", prepKeys: ["liver", "onion", "carrot"], activeMinutes: 22, passiveMinutes: 8, keepsDays: 2 },
+  "zucchini-tvorog": { heat: "oven", attention: "passive", prepKeys: ["zucchini"], activeMinutes: 10, passiveMinutes: 25, keepsDays: 2 },
+  "omelette-dinner": { heat: "stove", attention: "active", prepKeys: [], activeMinutes: 15, passiveMinutes: 5, keepsDays: 1 },
+  "potato-fish-bake": { heat: "oven", attention: "passive", prepKeys: ["fish", "potato", "carrot"], activeMinutes: 12, passiveMinutes: 28, keepsDays: 2 },
+  "chicken-plov": { heat: "stove", attention: "passive", prepKeys: ["chicken", "carrot", "onion"], activeMinutes: 20, passiveMinutes: 30, keepsDays: 3 },
+  "pumpkin-soup": { heat: "stove", attention: "passive", prepKeys: ["pumpkin", "potato", "carrot"], activeMinutes: 12, passiveMinutes: 18, keepsDays: 4 },
+  "turkey-pasta": { heat: "stove", attention: "active", prepKeys: ["turkey", "zucchini", "carrot"], activeMinutes: 22, passiveMinutes: 8, keepsDays: 2 },
+  "pearl-mushrooms": { heat: "stove", attention: "passive", prepKeys: ["mushrooms", "carrot", "onion"], activeMinutes: 15, passiveMinutes: 35, keepsDays: 3 },
+  "baked-chicken-veg": { heat: "oven", attention: "passive", prepKeys: ["chicken", "potato", "carrot", "onion"], activeMinutes: 12, passiveMinutes: 33, keepsDays: 3 },
+  "omelette-winter": { heat: "stove", attention: "active", prepKeys: ["carrot"], activeMinutes: 15, passiveMinutes: 5, keepsDays: 1 },
+  "veg-ragu-egg": { heat: "stove", attention: "passive", prepKeys: ["zucchini", "potato", "carrot"], activeMinutes: 12, passiveMinutes: 18, keepsDays: 2 },
+  "pasta-tvorog": { heat: "stove", attention: "active", prepKeys: [], activeMinutes: 15, passiveMinutes: 5, keepsDays: 1 },
+  "liver-carrot-rice": { heat: "stove", attention: "active", prepKeys: ["liver", "carrot", "onion"], activeMinutes: 25, passiveMinutes: 10, keepsDays: 2 },
+  "pork-veg-stew": { heat: "stove", attention: "passive", prepKeys: ["pork", "potato", "carrot", "cabbage", "onion"], activeMinutes: 20, passiveMinutes: 40, keepsDays: 3 },
+};
+
+for (const recipe of RECIPES) {
+  const cook = COOK_BY_ID[recipe.id];
+  if (cook) Object.assign(recipe, cook);
+}
+
 export const DAIRY_PRODUCT_IDS = new Set([
   "milk",
   "kefir",

@@ -98,20 +98,76 @@ export const DEFAULT_SETTINGS = {
   activity: "mid",
   preferLocal: true,
   disliked: ["shrimp"],
+  liked: [],
   month: new Date().getMonth() + 1,
-  cookTwoDays: false,
+  cookSessions: 0,
 };
 
-export function leftoverPartner(dayIndex, cookTwoDays) {
-  if (!cookTwoDays || dayIndex >= 6) return null;
-  return dayIndex % 2 === 0 ? dayIndex + 1 : dayIndex - 1;
+/** 3 сессии: пн–вт, ср–чт, пт–вс. Первый день группы — день готовки. */
+export const COOK_SESSIONS_3 = [
+  [0, 1],
+  [2, 3],
+  [4, 5, 6],
+];
+
+/** 2 сессии: пн–ср, чт–вс. */
+export const COOK_SESSIONS_2 = [
+  [0, 1, 2],
+  [3, 4, 5, 6],
+];
+
+export function cookSessionsCount(settings) {
+  const n = Number(settings?.cookSessions);
+  if (n === 2 || n === 3) return n;
+  if (settings?.cookTwoDays) return 3;
+  return 0;
 }
 
-export function leftoverPairLabel(dayIndex, cookTwoDays) {
-  const p = leftoverPartner(dayIndex, cookTwoDays);
-  if (p == null) return "";
-  const a = Math.min(dayIndex, p);
-  return `${WEEKDAY_SHORT[a]}–${WEEKDAY_SHORT[a + 1]}`;
+export function cookSessionGroups(settings) {
+  const n = cookSessionsCount(settings);
+  if (n === 3) return COOK_SESSIONS_3;
+  if (n === 2) return COOK_SESSIONS_2;
+  return [];
+}
+
+export function cookSessionForDay(dayIndex, settings) {
+  return cookSessionGroups(settings).find((group) => group.includes(dayIndex)) || null;
+}
+
+export function sessionDays(dayIndex, settings) {
+  const group = cookSessionForDay(dayIndex, settings);
+  return group ? [...group] : [dayIndex];
+}
+
+export function cookDayIndex(dayIndex, settings) {
+  const group = cookSessionForDay(dayIndex, settings);
+  return group ? group[0] : dayIndex;
+}
+
+export function isCookDay(dayIndex, settings) {
+  return cookDayIndex(dayIndex, settings) === dayIndex;
+}
+
+export function leftoverPartner(dayIndex, settingsOrFlag) {
+  const settings = typeof settingsOrFlag === "object" ? settingsOrFlag : { cookSessions: settingsOrFlag ? 3 : 0 };
+  const group = cookSessionForDay(dayIndex, settings);
+  if (!group || group.length < 2) return null;
+  const cook = group[0];
+  return dayIndex === cook ? group[1] : cook;
+}
+
+export function leftoverPairLabel(dayIndex, settingsOrFlag) {
+  const settings = typeof settingsOrFlag === "object" ? settingsOrFlag : { cookSessions: settingsOrFlag ? 3 : 0 };
+  const group = cookSessionForDay(dayIndex, settings);
+  if (!group || group.length < 2) return "";
+  return `${WEEKDAY_SHORT[group[0]]}–${WEEKDAY_SHORT[group[group.length - 1]]}`;
+}
+
+export function cookSessionsHint(settings) {
+  const n = cookSessionsCount(settings);
+  if (n === 3) return "пн–вт, ср–чт, пт–вс";
+  if (n === 2) return "пн–ср и чт–вс";
+  return "";
 }
 
 export function skipKey(dayIndex, slot) {
@@ -176,8 +232,22 @@ export const DISLIKE_GROUPS = {
 
 export function dislikedProductIds(disliked) {
   const ids = new Set(ALLERGY_EXCLUDE);
-  for (const id of disliked) {
+  for (const id of disliked || []) {
     for (const pid of DISLIKE_GROUPS[id] || [id]) ids.add(pid);
   }
   return ids;
+}
+
+export function likedProductIds(liked) {
+  const ids = new Set();
+  for (const id of liked || []) {
+    if (ALLERGY_EXCLUDE.includes(id)) continue;
+    for (const pid of DISLIKE_GROUPS[id] || [id]) ids.add(pid);
+  }
+  return ids;
+}
+
+export function recipeHasProduct(recipe, productIds) {
+  if (!recipe || !productIds?.size) return false;
+  return recipe.ingredients.some((ing) => productIds.has(ing.productId));
 }

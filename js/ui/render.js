@@ -10,6 +10,10 @@ import {
   portionsFor,
   leftoverPairLabel,
   isSkipped,
+  cookSessionsCount,
+  cookSessionsHint,
+  isCookDay,
+  cookSessionForDay,
 } from "../data/family.js";
 import { PRODUCTS } from "../data/products.js";
 import { RECIPE_STEPS } from "../data/recipe-steps.js";
@@ -20,6 +24,7 @@ import { renderReportInner } from "../engine/report.js";
 import { APP_VERSION } from "../version.js";
 import { recipeNutrition, recipeCost, roundNutrition, scaleNutrition } from "../engine/nutrition.js";
 import { buildShoppingList, formatRub } from "../engine/shopping.js";
+import { buildSessionPlan } from "../engine/cook.js";
 
 export function render(root, state, actions) {
   const targets = familyTargets(state.settings.activity);
@@ -95,6 +100,9 @@ export function render(root, state, actions) {
   root.querySelectorAll("[data-dislike]").forEach((el) => {
     el.addEventListener("change", () => actions.toggleDislike(el.dataset.dislike));
   });
+  root.querySelectorAll("[data-like]").forEach((el) => {
+    el.addEventListener("change", () => actions.toggleLike(el.dataset.like));
+  });
   root.querySelectorAll("[data-select-day]").forEach((el) => {
     el.addEventListener("click", () => actions.setDay(+el.dataset.selectDay));
   });
@@ -152,8 +160,8 @@ export function render(root, state, actions) {
   root.querySelectorAll("[data-pdf-report]").forEach((el) => {
     el.addEventListener("click", () => actions.exportPdf());
   });
-  root.querySelectorAll("[data-twodays]").forEach((el) => {
-    el.addEventListener("click", () => actions.setCookTwoDays(el.dataset.twodays === "1"));
+  root.querySelectorAll("[data-sessions]").forEach((el) => {
+    el.addEventListener("click", () => actions.setCookSessions(el.dataset.sessions));
   });
 }
 
@@ -175,11 +183,15 @@ function renderMenu(state, targets) {
     <nav class="day-nav" aria-label="Дни недели">
       ${week.days
         .map((d, i) => {
+          const sessions = cookSessionsCount(state.settings);
+          const cook = sessions && isCookDay(i, state.settings);
+          const leftover = sessions && !cook;
           const lunch = !isSkipped(week, i, "lunch") ? d.meals.lunch?.title : "";
           const first = lunch || (!isSkipped(week, i, "breakfast") ? d.meals.breakfast?.title : "") || "меню";
-          return `<button type="button" class="day-pill ${i === idx ? "on" : ""}" data-select-day="${i}">
+          const hint = leftover ? "остатки" : shortTitle(first);
+          return `<button type="button" class="day-pill ${i === idx ? "on" : ""} ${cook ? "cook-day" : ""} ${leftover ? "leftover-day" : ""}" data-select-day="${i}">
             <span class="day-pill-name">${WEEKDAY_SHORT[i]}</span>
-            <span class="day-pill-hint">${escapeHtml(shortTitle(first))}</span>
+            <span class="day-pill-hint">${escapeHtml(hint)}</span>
           </button>`;
         })
         .join("")}
@@ -212,8 +224,27 @@ function renderDay(day, state) {
         <div class="day-kcal">${day.totals.kcal} / ${t.kcal} ккал${kcalOk ? "" : " · вне коридора"}</div>
         <div class="track day-track"><div class="fill ${kcalOk ? "" : "warn"}" style="width:${Math.min(100, Math.round((day.totals.kcal / t.kcal) * 100))}%"></div></div>
       </div>
+      ${renderCookSession(day, state)}
       ${MEAL_SLOTS.map((slot) => renderMeal(day, slot, state)).join("")}
     </article>
+  `;
+}
+
+function renderCookSession(day, state) {
+  if (!cookSessionsCount(state.settings) || !isCookDay(day.index, state.settings)) return "";
+  const group = cookSessionForDay(day.index, state.settings);
+  const lunch = day.meals.lunch;
+  const dinner = day.meals.dinner;
+  if (!lunch || !dinner || !group) return "";
+  const plan = buildSessionPlan(lunch, dinner, group.length);
+  const label = leftoverPairLabel(day.index, state.settings);
+  return `
+    <div class="cook-session">
+      <p class="cook-session-title">Сессия готовки · на ${escapeHtml(label)} · ~${plan.wallMinutes} мин у плиты</p>
+      <ol class="cook-session-steps">
+        ${plan.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+      </ol>
+    </div>
   `;
 }
 
@@ -237,9 +268,11 @@ function renderMeal(day, slot, state) {
   const local = recipe.cuisine === "bashkir" || recipe.cuisine === "tatar";
   const cuisineLabel = { bashkir: "башкирское", tatar: "татарское", ru: "домашнее" }[recipe.cuisine];
   const leftover =
-    (slot === "lunch" || slot === "dinner") && state.settings.cookTwoDays
-      ? leftoverPairLabel(day.index, true)
+    (slot === "lunch" || slot === "dinner") && cookSessionsCount(state.settings)
+      ? leftoverPairLabel(day.index, state.settings)
       : "";
+  const leftoverKind =
+    leftover && !isCookDay(day.index, state.settings) ? "остатки" : leftover ? "готовим" : "";
   return `
     <div class="meal">
       <div class="meal-label">${MEAL_LABELS[slot]}</div>
@@ -251,7 +284,7 @@ function renderMeal(day, slot, state) {
         <span class="tag">${formatRub(cost)}</span>
         <span class="tag ${local ? "local" : ""}">${cuisineLabel}</span>
         ${recipe.soup ? `<span class="tag soup">суп</span>` : ""}
-        ${leftover ? `<span class="tag leftover">на ${leftover}</span>` : ""}
+        ${leftover ? `<span class="tag leftover">${leftoverKind} ${leftover}</span>` : ""}
       </div>
       <p class="child-note"><strong>Для ребёнка:</strong> ${escapeHtml(recipe.childNote)}</p>
       <div class="meal-actions">
@@ -370,7 +403,7 @@ function renderShop(state) {
   if (!state.week) {
     return `<section class="empty"><h2>Сначала соберите меню</h2><p>Список покупок появится после генерации недели.</p></section>`;
   }
-  const list = buildShoppingList(state.week);
+  const list = buildShoppingList(state.week, state.settings);
   return `
     <section class="totals shop">
       <div class="shop-head">
@@ -427,12 +460,14 @@ function renderSettings(state) {
         </div>
       </div>
       <div class="field">
-        <span class="field-title">Обед и ужин на два дня</span>
-        <p class="lede">Готовим обед и ужин сразу на пн–вт, ср–чт, пт–сб. Воскресенье — однодневное. В каждой паре одно из блюд предпочтительно суп. После смены нажмите «Составить меню».</p>
+        <span class="field-title">Готовка обеда и ужина</span>
+        <p class="lede">Основные блюда готовим 2 или 3 раза в неделю, обед и ужин — в одну сессию. Воскресенье всегда из остатков. После смены нажмите «Составить меню».</p>
         <div class="seg">
-          <button type="button" data-twodays="1" class="${s.cookTwoDays ? "on" : ""}">Включено</button>
-          <button type="button" data-twodays="0" class="${!s.cookTwoDays ? "on" : ""}">Выключено</button>
+          <button type="button" data-sessions="0" class="${cookSessionsCount(s) === 0 ? "on" : ""}">Каждый день</button>
+          <button type="button" data-sessions="2" class="${cookSessionsCount(s) === 2 ? "on" : ""}">2 раза</button>
+          <button type="button" data-sessions="3" class="${cookSessionsCount(s) === 3 ? "on" : ""}">3 раза</button>
         </div>
+        ${cookSessionsCount(s) ? `<p class="lede">Сессии: ${cookSessionsHint(s)}.</p>` : ""}
       </div>
       <div class="field">
         <span class="field-title">Месяц сезона</span>
@@ -452,6 +487,19 @@ function renderSettings(state) {
             const note = opt.note ? ` <em>(${escapeHtml(opt.note)})</em>` : "";
             return `<label class="${opt.locked ? "locked" : ""}"><input type="checkbox" data-dislike="${opt.id}" ${on ? "checked" : ""} ${opt.locked ? "disabled" : ""} /> ${escapeHtml(opt.label)}${note}</label>`;
           }).join("")}
+        </div>
+      </div>
+      <div class="field">
+        <span class="field-title">Любим / берём чаще</span>
+        <p class="lede">Эти продукты алгоритм будет подставлять охотнее. Нельзя отметить то, что в запретах.</p>
+        <div class="check-grid">
+          ${DISLIKE_OPTIONS.filter((opt) => !opt.locked)
+            .map((opt) => {
+              const blocked = s.disliked.includes(opt.id);
+              const on = !blocked && (s.liked || []).includes(opt.id);
+              return `<label class="${blocked ? "locked" : ""}"><input type="checkbox" data-like="${opt.id}" ${on ? "checked" : ""} ${blocked ? "disabled" : ""} /> ${escapeHtml(opt.label)}</label>`;
+            })
+            .join("")}
         </div>
       </div>
     </section>
@@ -493,6 +541,8 @@ function renderReplaceSheet(state) {
                     opt.cheaper && !opt.current ? "дешевле" : "",
                     !opt.inSeason ? "не сезон" : "",
                     opt.disliked && !opt.hasAllergy ? "в исключениях" : "",
+                    opt.preferred ? "любим" : "",
+                    opt.sharedPrep ? "общая нарезка" : "",
                     opt.conflict ? "тот же продукт, что в соседнем приёме" : "",
                     opt.hasAllergy ? "аллергия" : "",
                   ].filter(Boolean);

@@ -1,6 +1,21 @@
 import { RECIPES, DAIRY_PRODUCT_IDS } from "../data/recipes.js";
 import { recipeInSeason } from "../data/seasons.js";
-import { familyTargets, SLOT_KCAL_SHARE, MEAL_SLOTS, MEAL_SCALE, dislikedProductIds, leftoverPartner, isSkipped, ALLERGY_EXCLUDE } from "../data/family.js";
+import {
+  familyTargets,
+  SLOT_KCAL_SHARE,
+  MEAL_SLOTS,
+  MEAL_SCALE,
+  dislikedProductIds,
+  likedProductIds,
+  recipeHasProduct,
+  isSkipped,
+  ALLERGY_EXCLUDE,
+  cookSessionsCount,
+  cookSessionGroups,
+  cookSessionForDay,
+  sessionDays,
+  isCookDay,
+} from "../data/family.js";
 import {
   recipeNutrition,
   familyMealNutrition,
@@ -12,6 +27,7 @@ import {
 } from "./nutrition.js";
 import { buildShoppingList } from "./shopping.js";
 import { mulberry32, pickBest } from "./rng.js";
+import { recipeCook, pairCookDelta, sharedPrepKeys } from "./cook.js";
 
 const SLOT_TO_MEAL = {
   breakfast: "breakfast",
@@ -45,7 +61,14 @@ export function generateWeek(settings, seed) {
     const meals = {};
     const dayUsed = new Set();
 
+    const session = cookSessionForDay(d, settings);
+    const leftoverDay = Boolean(session && session[0] !== d);
+
     for (const slot of MEAL_SLOTS) {
+      if (leftoverDay && (slot === "lunch" || slot === "dinner")) {
+        meals[slot] = days[session[0]]?.meals[slot] || null;
+        continue;
+      }
       const recipe = pickRecipe({
         slot,
         settings,
@@ -60,6 +83,7 @@ export function generateWeek(settings, seed) {
         minCost: null,
         sameDayLunch: meals.lunch || null,
         sameDayDinner: meals.dinner || null,
+        sessionLength: session?.length || 1,
       });
       meals[slot] = recipe;
       if (recipe) {
@@ -74,19 +98,25 @@ export function generateWeek(settings, seed) {
 
   balanceDays(days, settings, rng, used, targets);
   applyWeeklyGuarantees(days, settings, rng, used, targets);
-  fixSameDayMains(days, settings, rng, used, targets);
-  ensurePairSoups(days, settings, rng, used, targets);
-  syncLeftovers(days, settings, targets);
-  if (settings.cookTwoDays && fishCount(days) < 2 && !dislikedProductIds(settings.disliked).has("fishFillet")) {
-    forceProtein(days, "fish", 2, settings, rng, used, targets, ["lunch", "dinner"]);
+  if (!cookSessionsCount(settings)) {
     fixSameDayMains(days, settings, rng, used, targets);
+  }
+  ensurePairSoups(days, settings, rng, used, targets);
+  ensureCookPair(days, settings, rng, used, targets);
+  syncLeftovers(days, settings, targets);
+  if (cookSessionsCount(settings) && fishCount(days, settings) < 2 && !dislikedProductIds(settings.disliked).has("fishFillet")) {
+    forceProtein(days, "fish", 2, settings, rng, used, targets, ["lunch", "dinner"]);
     ensurePairSoups(days, settings, rng, used, targets);
+    ensureCookPair(days, settings, rng, used, targets);
     syncLeftovers(days, settings, targets);
   }
   balanceWeekCost(days, settings, rng, used, targets);
   syncLeftovers(days, settings, targets);
-  fixSameDayMains(days, settings, rng, used, targets);
+  if (!cookSessionsCount(settings)) {
+    fixSameDayMains(days, settings, rng, used, targets);
+  }
   ensurePairSoups(days, settings, rng, used, targets);
+  ensureCookPair(days, settings, rng, used, targets);
   syncLeftovers(days, settings, targets);
 
   return refreshWeekNutrition({
@@ -125,24 +155,23 @@ export function replaceMeal(week, dayIndex, slot, settings, mode = "any") {
     minCost: null,
     sameDayLunch: days[dayIndex].meals.lunch,
     sameDayDinner: days[dayIndex].meals.dinner,
+    sessionLength: cookSessionForDay(dayIndex, settings)?.length || 1,
   });
 
   if (!next) return week;
 
-  days[dayIndex].meals[slot] = next;
-  const partner = leftoverPartner(dayIndex, settings.cookTwoDays);
-  if (partner != null && (slot === "lunch" || slot === "dinner")) {
-    days[partner].meals[slot] = next;
-  }
-  if (settings.cookTwoDays && (slot === "lunch" || slot === "dinner")) {
+  const skipped = applyPairedMeal(days, week.skipped, dayIndex, slot, next, settings);
+  if (cookSessionsCount(settings) && (slot === "lunch" || slot === "dinner")) {
     const fill = slot === "lunch" ? "dinner" : "lunch";
     ensurePairSoups(days, settings, rng, used, week.targets, fill);
+    ensureCookPair(days, settings, rng, used, week.targets);
     syncLeftovers(days, settings, week.targets);
   }
 
   const nextWeek = refreshWeekNutrition({
     ...week,
     days,
+    skipped,
   });
   nextWeek.lastReplace = {
     slot,
@@ -168,18 +197,24 @@ export function listReplaceOptions(week, dayIndex, slot, settings) {
         ? week.days[dayIndex]?.meals.dinner
         : null;
   const blocked = dislikedProductIds(settings.disliked);
+  const liked = likedProductIds(settings.liked);
   const allergy = new Set(ALLERGY_EXCLUDE);
+  const sessionsOn = cookSessionsCount(settings) > 0;
   return RECIPES.filter((r) => r.meal === mealType)
     .map((recipe) => {
       const hasAllergy = recipe.ingredients.some((ing) => allergy.has(ing.productId));
       const disliked = recipe.ingredients.some((ing) => blocked.has(ing.productId));
+      const preferred = recipeHasProduct(recipe, liked);
+      const shared = Boolean((slot === "lunch" || slot === "dinner") && other && sharedPrepKeys(recipe, other).length);
       return {
         recipe,
         current: recipe.id === current?.id,
         hasAllergy,
         disliked,
+        preferred,
         inSeason: recipeInSeason(recipe, settings.month),
-        conflict: Boolean((slot === "lunch" || slot === "dinner") && other && sharesMainIngredient(recipe, other)),
+        conflict: Boolean(!sessionsOn && (slot === "lunch" || slot === "dinner") && other && sharesMainIngredient(recipe, other)),
+        sharedPrep: Boolean(sessionsOn && shared),
         cheaper: Boolean(current && recipeCost(recipe) < recipeCost(current) * 0.95),
       };
     })
@@ -195,6 +230,8 @@ export function replaceMealById(week, dayIndex, slot, settings, recipeId) {
   const mealType = SLOT_TO_MEAL[slot];
   const nextRecipe = RECIPES.find((r) => r.id === recipeId && r.meal === mealType);
   if (!nextRecipe) return week;
+  const allergy = new Set(ALLERGY_EXCLUDE);
+  if (nextRecipe.ingredients.some((ing) => allergy.has(ing.productId))) return week;
 
   const days = week.days.map((day) => ({
     ...day,
@@ -203,15 +240,12 @@ export function replaceMealById(week, dayIndex, slot, settings, recipeId) {
   const current = days[dayIndex].meals[slot];
   if (current?.id === nextRecipe.id) return week;
 
-  days[dayIndex].meals[slot] = nextRecipe;
-  const partner = leftoverPartner(dayIndex, settings.cookTwoDays);
-  if (partner != null && (slot === "lunch" || slot === "dinner")) {
-    days[partner].meals[slot] = nextRecipe;
-  }
+  const skipped = applyPairedMeal(days, week.skipped, dayIndex, slot, nextRecipe, settings);
 
   const nextWeek = refreshWeekNutrition({
     ...week,
     days,
+    skipped,
   });
   nextWeek.lastReplace = {
     slot,
@@ -223,14 +257,17 @@ export function replaceMealById(week, dayIndex, slot, settings, recipeId) {
   return nextWeek;
 }
 
-export function skipMeal(week, dayIndex, slot) {
-  const skipped = { ...(week.skipped || {}), [skipKeyFrom(dayIndex, slot)]: true };
+export function skipMeal(week, dayIndex, slot, settings) {
+  const skipped = { ...(week.skipped || {}) };
+  const days = slot === "lunch" || slot === "dinner" ? sessionDays(dayIndex, settings) : [dayIndex];
+  for (const d of days) skipped[skipKeyFrom(d, slot)] = true;
   return refreshWeekNutrition({ ...week, skipped });
 }
 
-export function restoreMeal(week, dayIndex, slot) {
+export function restoreMeal(week, dayIndex, slot, settings) {
   const skipped = { ...(week.skipped || {}) };
-  delete skipped[skipKeyFrom(dayIndex, slot)];
+  const days = slot === "lunch" || slot === "dinner" ? sessionDays(dayIndex, settings) : [dayIndex];
+  for (const d of days) delete skipped[skipKeyFrom(d, slot)];
   return refreshWeekNutrition({ ...week, skipped });
 }
 
@@ -269,14 +306,25 @@ function skipKeyFrom(dayIndex, slot) {
   return `${dayIndex}:${slot}`;
 }
 
+function applyPairedMeal(days, skipped, dayIndex, slot, recipe, settings) {
+  const nextSkipped = { ...(skipped || {}) };
+  const targets = slot === "lunch" || slot === "dinner" ? sessionDays(dayIndex, settings) : [dayIndex];
+  for (const d of targets) {
+    days[d].meals[slot] = recipe;
+    delete nextSkipped[skipKeyFrom(d, slot)];
+  }
+  return nextSkipped;
+}
+
 function syncLeftovers(days, settings, targets) {
-  if (!settings.cookTwoDays) return;
-  for (const a of [0, 2, 4]) {
-    const b = a + 1;
-    days[b].meals.lunch = days[a].meals.lunch;
-    days[b].meals.dinner = days[a].meals.dinner;
-    days[a] = makeDay(a, days[a].meals, targets);
-    days[b] = makeDay(b, days[b].meals, targets);
+  for (const group of cookSessionGroups(settings)) {
+    const cook = group[0];
+    for (const d of group.slice(1)) {
+      days[d].meals.lunch = days[cook].meals.lunch;
+      days[d].meals.dinner = days[cook].meals.dinner;
+      days[d] = makeDay(d, days[d].meals, targets);
+    }
+    days[cook] = makeDay(cook, days[cook].meals, targets);
   }
 }
 
@@ -312,15 +360,17 @@ function countUsed(days) {
 }
 
 function porkAlready(ctx) {
-  if (porkCount(ctx.days) >= 1) return true;
+  if (porkCount(ctx.days, ctx.settings) >= 1) return true;
   if (ctx.sameDayLunch?.protein === "pork") return true;
   if (ctx.sameDayDinner?.protein === "pork") return true;
   return false;
 }
 
-function porkCount(days) {
+function porkCount(days, settings) {
   let n = 0;
-  for (const day of days) {
+  for (const i of editableDayIndexes(settings)) {
+    const day = days[i];
+    if (!day) continue;
     if (day.meals.lunch?.protein === "pork" || day.meals.dinner?.protein === "pork") n += 1;
   }
   return n;
@@ -334,9 +384,10 @@ function pickRecipe(ctx) {
       : ctx.slot === "lunch"
         ? ctx.sameDayDinner
         : null;
+  const sessionsOn = cookSessionsCount(ctx.settings) > 0;
   let candidates = RECIPES.filter((r) => isEligible(r, mealType, ctx.settings, ctx.exclude));
 
-  if ((ctx.slot === "lunch" || ctx.slot === "dinner") && other) {
+  if (!sessionsOn && (ctx.slot === "lunch" || ctx.slot === "dinner") && other) {
     const noOverlap = candidates.filter((r) => !sharesMainIngredient(r, other));
     if (noOverlap.length) candidates = noOverlap;
   }
@@ -356,15 +407,17 @@ function pickRecipe(ctx) {
   }
   if (!candidates.length) {
     candidates = RECIPES.filter((r) => r.meal === mealType && r.childSafe);
-    if ((ctx.slot === "lunch" || ctx.slot === "dinner") && other) {
+    if (!sessionsOn && (ctx.slot === "lunch" || ctx.slot === "dinner") && other) {
       const noOverlap = candidates.filter((r) => !sharesMainIngredient(r, other));
       if (noOverlap.length) candidates = noOverlap;
     }
   }
-  const needFish = fishCount(ctx.days) < 2;
-  const needLegume = legumeCount(ctx.days) < 1;
-  const localLunchShare = localLunchRatio(ctx.days);
-  const wantPairSoup = Boolean(ctx.settings.cookTwoDays && (ctx.slot === "lunch" || ctx.slot === "dinner"));
+  const needFish = fishCount(ctx.days, ctx.settings) < 2;
+  const needLegume = legumeCount(ctx.days, ctx.settings) < 1;
+  const localLunchShare = localLunchRatio(ctx.days, ctx.settings);
+  const wantPair = Boolean(sessionsOn && (ctx.slot === "lunch" || ctx.slot === "dinner"));
+  const liked = likedProductIds(ctx.settings.liked);
+  const sessionLength = ctx.sessionLength || 1;
 
   return pickBest(candidates, (recipe) => {
     let s = ctx.rng() * 0.8;
@@ -376,7 +429,7 @@ function pickRecipe(ctx) {
       s -= 4;
     }
 
-    if (other && sharesMainIngredient(recipe, other)) s -= 12;
+    if (!sessionsOn && other && sharesMainIngredient(recipe, other)) s -= 12;
 
     if (ctx.settings.preferLocal && (recipe.cuisine === "bashkir" || recipe.cuisine === "tatar")) {
       s += ctx.slot === "lunch" && localLunchShare < 0.3 ? 3.5 : 1.5;
@@ -396,15 +449,16 @@ function pickRecipe(ctx) {
 
     if (recipe.protein === "pork") s -= 5.5;
 
-    if (wantPairSoup) {
+    if (recipeHasProduct(recipe, liked)) s += 2.2;
+
+    if (wantPair) {
       const lunch = ctx.slot === "lunch" ? recipe : ctx.sameDayLunch;
       const dinner = ctx.slot === "dinner" ? recipe : ctx.sameDayDinner;
       if (ctx.slot === "lunch" && recipe.soup) s += 3.2;
-      if (lunch && dinner) {
-        if (lunch.soup && dinner.soup) s -= 2.4;
-        if (!lunch.soup && !dinner.soup) s -= 1.8;
-        if ((lunch.soup && !dinner.soup) || (!lunch.soup && dinner.soup)) s += 2.2;
-      }
+      if (lunch && dinner) s += pairCookDelta(lunch, dinner);
+      const meta = recipeCook(recipe);
+      if (sessionLength >= 4) s += meta.keepsDays >= 3 ? 2.6 : -2.2;
+      else if (sessionLength >= 3) s += meta.keepsDays >= 3 ? 1.4 : -0.6;
     }
 
     return s;
@@ -425,9 +479,11 @@ function recipeHasDairyProduct(recipe) {
   return recipe.ingredients.some((ing) => DAIRY_PRODUCT_IDS.has(ing.productId));
 }
 
-function fishCount(days) {
+function fishCount(days, settings) {
   let n = 0;
-  for (const day of days) {
+  for (const i of editableDayIndexes(settings)) {
+    const day = days[i];
+    if (!day) continue;
     for (const slot of ["lunch", "dinner"]) {
       if (day.meals[slot]?.protein === "fish") n += 1;
     }
@@ -435,33 +491,40 @@ function fishCount(days) {
   return n;
 }
 
-function legumeCount(days) {
-  return days.reduce((n, day) => {
-    return n + MEAL_SLOTS.filter((s) => day.meals[s]?.protein === "legume").length;
-  }, 0);
+function legumeCount(days, settings) {
+  let n = 0;
+  for (const i of editableDayIndexes(settings)) {
+    const day = days[i];
+    if (!day) continue;
+    n += MEAL_SLOTS.filter((s) => day.meals[s]?.protein === "legume").length;
+  }
+  return n;
 }
 
-function localLunchRatio(days) {
-  if (!days.length) return 0;
+function localLunchRatio(days, settings) {
+  const indexes = editableDayIndexes(settings);
+  if (!indexes.length) return 0;
   let local = 0;
-  for (const day of days) {
-    const c = day.meals.lunch?.cuisine;
+  for (const i of indexes) {
+    const c = days[i]?.meals.lunch?.cuisine;
     if (c === "bashkir" || c === "tatar") local += 1;
   }
-  return local / days.length;
+  return local / indexes.length;
 }
 
 function editableDayIndexes(settings) {
-  return settings.cookTwoDays ? [0, 2, 4, 6] : [0, 1, 2, 3, 4, 5, 6];
+  const groups = cookSessionGroups(settings);
+  if (!groups.length) return [0, 1, 2, 3, 4, 5, 6];
+  return groups.map((group) => group[0]);
 }
 
 function applyWeeklyGuarantees(days, settings, rng, used, targets) {
   const blocked = dislikedProductIds(settings.disliked);
   const fishBlocked = blocked.has("fishFillet") && blocked.has("pike");
-  if (!fishBlocked && fishCount(days) < 2) {
+  if (!fishBlocked && fishCount(days, settings) < 2) {
     forceProtein(days, "fish", 2, settings, rng, used, targets, ["lunch", "dinner"]);
   }
-  if (legumeCount(days) < 1) {
+  if (legumeCount(days, settings) < 1) {
     forceProtein(days, "legume", 1, settings, rng, used, targets, ["lunch", "dinner"]);
   }
   for (let i = 0; i < days.length; i++) {
@@ -489,18 +552,19 @@ function applyWeeklyGuarantees(days, settings, rng, used, targets) {
       }
     }
   }
-  if (settings.preferLocal && localLunchRatio(days) < 0.28) {
+  if (settings.preferLocal && localLunchRatio(days, settings) < 0.28) {
     const localLunches = RECIPES.filter(
       (r) =>
         r.meal === "lunch" &&
         (r.cuisine === "bashkir" || r.cuisine === "tatar") &&
         isEligible(r, "lunch", settings, new Set())
     );
-    const dinner = days[Math.min(2, days.length - 1)]?.meals.dinner;
-    const filtered = localLunches.filter((r) => !sharesMainIngredient(r, dinner));
+    const idx = editableDayIndexes(settings).find((i) => i >= 2) ?? editableDayIndexes(settings)[0] ?? 2;
+    const dinner = days[idx]?.meals.dinner;
+    const sessionsOn = cookSessionsCount(settings) > 0;
+    const filtered = sessionsOn ? localLunches : localLunches.filter((r) => !sharesMainIngredient(r, dinner));
     const pool = filtered.length ? filtered : localLunches;
-    if (pool.length) {
-      const idx = Math.min(2, days.length - 1);
+    if (pool.length && days[idx]) {
       days[idx].meals.lunch = pool[Math.floor(rng() * pool.length)];
       days[idx] = makeDay(idx, days[idx].meals, targets);
     }
@@ -508,8 +572,9 @@ function applyWeeklyGuarantees(days, settings, rng, used, targets) {
 }
 
 function forceProtein(days, protein, minCount, settings, rng, used, targets, slots) {
-  let missing = minCount - (protein === "fish" ? fishCount(days) : legumeCount(days));
+  let missing = minCount - (protein === "fish" ? fishCount(days, settings) : legumeCount(days, settings));
   const pool = RECIPES.filter((r) => r.protein === protein && r.childSafe);
+  const sessionsOn = cookSessionsCount(settings) > 0;
   for (const i of editableDayIndexes(settings)) {
     const day = days[i];
     if (missing <= 0) break;
@@ -521,7 +586,7 @@ function forceProtein(days, protein, minCount, settings, rng, used, targets, slo
       const candidates = pool.filter(
         (r) =>
           isEligible(r, mealType, settings, new Set([day.meals[slot]?.id])) &&
-          !sharesMainIngredient(r, other)
+          (sessionsOn || !sharesMainIngredient(r, other))
       );
       if (!candidates.length) continue;
       day.meals[slot] = candidates[Math.floor(rng() * candidates.length)];
@@ -561,8 +626,9 @@ function fixSameDayMains(days, settings, rng, used, targets) {
 }
 
 function ensurePairSoups(days, settings, rng, used, targets, preferFill = "lunch") {
-  if (!settings.cookTwoDays) return;
-  for (const a of [0, 2, 4]) {
+  if (!cookSessionsCount(settings)) return;
+  for (const group of cookSessionGroups(settings)) {
+    const a = group[0];
     const lunch = days[a].meals.lunch;
     const dinner = days[a].meals.dinner;
     if (lunch?.soup || dinner?.soup) continue;
@@ -574,26 +640,57 @@ function ensurePairSoups(days, settings, rng, used, targets, preferFill = "lunch
         (r) =>
           r.soup &&
           r.meal === (slot === "lunch" ? "lunch" : "dinner") &&
-          isEligible(r, slot === "lunch" ? "lunch" : "dinner", settings, new Set([current?.id])) &&
-          !sharesMainIngredient(r, other)
+          isEligible(r, slot === "lunch" ? "lunch" : "dinner", settings, new Set([current?.id]))
       );
       if (!pool.length) continue;
-      days[a].meals[slot] = pool[Math.floor(rng() * pool.length)];
+      const ranked = [...pool].sort((x, y) => pairCookDelta(slot === "lunch" ? x : other, slot === "dinner" ? x : other) - pairCookDelta(slot === "lunch" ? y : other, slot === "dinner" ? y : other));
+      days[a].meals[slot] = ranked[ranked.length - 1] || pool[Math.floor(rng() * pool.length)];
       days[a] = makeDay(a, days[a].meals, targets);
       break;
     }
   }
 }
 
-function weekShopTotal(days) {
-  return buildShoppingList({ days, skipped: {} }).total;
+function ensureCookPair(days, settings, rng, used, targets) {
+  if (!cookSessionsCount(settings)) return;
+  for (const group of cookSessionGroups(settings)) {
+    const a = group[0];
+    const lunch = days[a].meals.lunch;
+    const dinner = days[a].meals.dinner;
+    if (!lunch || !dinner) continue;
+    if (pairCookDelta(lunch, dinner) >= 0) continue;
+    const next = pickRecipe({
+      slot: "dinner",
+      settings,
+      rng,
+      used,
+      dayUsed: new Set(MEAL_SLOTS.map((s) => days[a].meals[s]?.id).filter(Boolean)),
+      prevLunchProtein: a > 0 ? days[a - 1].meals.lunch?.protein : null,
+      days,
+      targets,
+      exclude: new Set(dinner ? [dinner.id] : []),
+      cheaperThan: null,
+      minCost: null,
+      sameDayLunch: lunch,
+      sameDayDinner: dinner,
+      sessionLength: group.length,
+    });
+    if (next && pairCookDelta(lunch, next) > pairCookDelta(lunch, dinner)) {
+      days[a].meals.dinner = next;
+      days[a] = makeDay(a, days[a].meals, targets);
+    }
+  }
+}
+
+function weekShopTotal(days, settings) {
+  return buildShoppingList({ days, skipped: {} }, settings).total;
 }
 
 function balanceWeekCost(days, settings, rng, used, targets) {
   const lo = TARGET_WEEK_COST - 500;
   const hi = TARGET_WEEK_COST + 700;
   for (let guard = 0; guard < 14; guard++) {
-    const total = weekShopTotal(days);
+    const total = weekShopTotal(days, settings);
     if (total >= lo && total <= hi) break;
     const tooLow = total < lo;
     let improved = false;
@@ -615,11 +712,12 @@ function balanceWeekCost(days, settings, rng, used, targets) {
           minCost: tooLow ? recipeCost(current) * 1.06 : null,
           sameDayLunch: days[i].meals.lunch,
           sameDayDinner: days[i].meals.dinner,
+          sessionLength: cookSessionForDay(i, settings)?.length || 1,
         });
         if (!next || next.id === current.id) continue;
         const other = slot === "lunch" ? days[i].meals.dinner : days[i].meals.lunch;
-        if (sharesMainIngredient(next, other)) continue;
-        if (settings.cookTwoDays && leftoverPartner(i, true) != null) {
+        if (!cookSessionsCount(settings) && sharesMainIngredient(next, other)) continue;
+        if (cookSessionsCount(settings)) {
           if (current.soup && !next.soup && !other?.soup) continue;
         }
         const curC = recipeCost(current);
@@ -627,9 +725,8 @@ function balanceWeekCost(days, settings, rng, used, targets) {
         if (tooLow && nextC <= curC) continue;
         if (!tooLow && nextC >= curC) continue;
         days[i].meals[slot] = next;
-        const partner = leftoverPartner(i, settings.cookTwoDays);
-        if (partner != null && (slot === "lunch" || slot === "dinner")) {
-          days[partner].meals[slot] = next;
+        for (const d of sessionDays(i, settings)) {
+          if (slot === "lunch" || slot === "dinner") days[d].meals[slot] = next;
         }
         days[i] = makeDay(i, days[i].meals, targets);
         improved = true;
@@ -645,7 +742,7 @@ function balanceDays(days, settings, rng, used, targets) {
   const lo = targets.family.kcal * 0.9;
   const hi = targets.family.kcal * 1.1;
   for (let i = 0; i < days.length; i++) {
-    if (settings.cookTwoDays && i % 2 === 1 && i < 6) continue;
+    if (cookSessionsCount(settings) && !isCookDay(i, settings)) continue;
     let kcal = days[i].totals.kcal;
     let guard = 0;
     while ((kcal < lo || kcal > hi) && guard < 6) {
@@ -672,12 +769,12 @@ function balanceDays(days, settings, rng, used, targets) {
         guard += 1;
         continue;
       }
-      if (protectedProtein && next.protein !== current.protein && fishCount(days) <= 2) {
+      if (protectedProtein && next.protein !== current.protein && fishCount(days, settings) <= 2) {
         guard += 1;
         continue;
       }
       const other = slot === "lunch" ? days[i].meals.dinner : slot === "dinner" ? days[i].meals.lunch : null;
-      if (other && sharesMainIngredient(next, other)) {
+      if (!cookSessionsCount(settings) && other && sharesMainIngredient(next, other)) {
         guard += 1;
         continue;
       }

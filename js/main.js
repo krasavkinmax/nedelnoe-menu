@@ -5,7 +5,7 @@ import { buildStandaloneHtml, shareReport, downloadTextFile } from "./engine/rep
 import { recipeCost } from "./engine/nutrition.js";
 import { formatRub } from "./engine/shopping.js";
 import { render } from "./ui/render.js";
-import { DISLIKE_OPTIONS, ALLERGY_EXCLUDE } from "./data/family.js";
+import { DISLIKE_OPTIONS, ALLERGY_EXCLUDE, cookSessionsCount, cookSessionsHint } from "./data/family.js";
 
 const root = document.getElementById("app");
 const state = initialState();
@@ -18,8 +18,9 @@ const actions = {
     state.tab = "menu";
     state.replaceOpen = null;
     state.reportOpen = false;
-    state.toast = state.settings.cookTwoDays
-      ? "Неделя собрана: обед и ужин на пн–вт, ср–чт, пт–сб — сразу на два дня, в паре одно блюдо предпочтительно суп. Воскресенье — однодневное."
+    const sessions = cookSessionsCount(state.settings);
+    state.toast = sessions
+      ? `Неделя собрана: обед и ужин готовим ${sessions === 2 ? "два" : "три"} раза (${cookSessionsHint(state.settings)}). В каждой сессии оба блюда — вместе, воскресенье из остатков.`
       : "Новая неделя собрана. Можно заменить любое блюдо или выбрать более дешёвый вариант.";
     persist();
   },
@@ -149,6 +150,17 @@ const actions = {
     else set.add(id);
     for (const allergy of ALLERGY_EXCLUDE) set.add(allergy);
     state.settings.disliked = [...set];
+    state.settings.liked = (state.settings.liked || []).filter((x) => !set.has(x));
+    persist();
+  },
+  toggleLike(id) {
+    const opt = DISLIKE_OPTIONS.find((o) => o.id === id);
+    if (opt?.locked || ALLERGY_EXCLUDE.includes(id)) return;
+    if (state.settings.disliked.includes(id)) return;
+    const set = new Set(state.settings.liked || []);
+    if (set.has(id)) set.delete(id);
+    else set.add(id);
+    state.settings.liked = [...set];
     persist();
   },
   setDay(index) {
@@ -176,18 +188,22 @@ const actions = {
   },
   skip(dayIndex, slot) {
     if (!state.week) return;
-    state.week = skipMeal(state.week, dayIndex, slot);
-    state.toast = "Блюдо убрано из этого дня. Список покупок пересчитан.";
+    state.week = skipMeal(state.week, dayIndex, slot, state.settings);
+    const sessions = cookSessionsCount(state.settings) && (slot === "lunch" || slot === "dinner");
+    state.toast = sessions
+      ? "Блюдо убрано на все дни этой готовки. Список покупок пересчитан."
+      : "Блюдо убрано из этого дня. Список покупок пересчитан.";
     persist();
   },
   restore(dayIndex, slot) {
     if (!state.week) return;
-    state.week = restoreMeal(state.week, dayIndex, slot);
+    state.week = restoreMeal(state.week, dayIndex, slot, state.settings);
     state.toast = "Блюдо возвращено, покупки обновлены.";
     persist();
   },
-  setCookTwoDays(value) {
-    state.settings.cookTwoDays = value;
+  setCookSessions(value) {
+    const n = Number(value);
+    state.settings.cookSessions = n === 2 || n === 3 ? n : 0;
     persist();
   },
 };

@@ -1,8 +1,9 @@
-import { MEAL_SLOTS, MEAL_LABELS, MONTH_NAMES, leftoverPairLabel, isSkipped, portionsFor } from "../data/family.js";
+import { MEAL_SLOTS, MEAL_LABELS, MONTH_NAMES, leftoverPairLabel, isSkipped, portionsFor, cookSessionsCount, cookSessionsHint, isCookDay, cookSessionForDay } from "../data/family.js";
 import { PRODUCTS } from "../data/products.js";
 import { RECIPE_STEPS } from "../data/recipe-steps.js";
 import { adultOnlyNames } from "../data/recipes.js";
 import { buildShoppingList, formatRub } from "./shopping.js";
+import { buildSessionPlan } from "./cook.js";
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -31,11 +32,12 @@ async function getPdfMake() {
 export async function exportWeekPdf(week, settings) {
   const pdfMake = await getPdfMake();
   const month = MONTH_NAMES[(settings.month || 1) - 1];
-  const shop = buildShoppingList(week);
+  const shop = buildShoppingList(week, settings);
+  const sessions = cookSessionsCount(settings);
   const content = [
     { text: "Меню на неделю", style: "h1" },
     {
-      text: `Семья из трёх человек · Республика Башкортостан · ${month}${settings.cookTwoDays ? " · обед и ужин готовим на 2 дня (пн–вт, ср–чт, пт–сб)" : ""}`,
+      text: `Семья из трёх человек · Республика Башкортостан · ${month}${sessions ? ` · обед и ужин сессиями (${cookSessionsHint(settings)})` : ""}`,
       style: "lead",
       margin: [0, 0, 0, 16],
     },
@@ -55,6 +57,16 @@ export async function exportWeekPdf(week, settings) {
 
   for (const day of week.days) {
     content.push({ text: day.weekday, style: "h3", margin: [0, 12, 0, 4] });
+    const group = cookSessionForDay(day.index, settings);
+    if (sessions && isCookDay(day.index, settings) && day.meals.lunch && day.meals.dinner && group) {
+      const plan = buildSessionPlan(day.meals.lunch, day.meals.dinner, group.length);
+      content.push({
+        text: `Сессия готовки, ~${plan.wallMinutes} мин: ${plan.steps.join(" ")}`,
+        italics: true,
+        fontSize: 9,
+        margin: [0, 0, 0, 6],
+      });
+    }
     let any = false;
     for (const slot of MEAL_SLOTS) {
       if (isSkipped(week, day.index, slot)) continue;
@@ -62,8 +74,8 @@ export async function exportWeekPdf(week, settings) {
       if (!recipe) continue;
       any = true;
       const leftover =
-        (slot === "lunch" || slot === "dinner") && settings.cookTwoDays
-          ? leftoverPairLabel(day.index, true)
+        (slot === "lunch" || slot === "dinner") && sessions
+          ? leftoverPairLabel(day.index, settings)
           : "";
       const scale = portionsFor(recipe);
       const ings = recipe.ingredients

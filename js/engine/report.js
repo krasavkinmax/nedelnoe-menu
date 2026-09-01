@@ -1,8 +1,9 @@
-import { MEAL_SLOTS, MEAL_LABELS, MONTH_NAMES, leftoverPairLabel, isSkipped, portionsFor } from "../data/family.js";
+import { MEAL_SLOTS, MEAL_LABELS, MONTH_NAMES, leftoverPairLabel, isSkipped, portionsFor, cookSessionsCount, cookSessionsHint, isCookDay, cookSessionForDay } from "../data/family.js";
 import { PRODUCTS } from "../data/products.js";
 import { RECIPE_STEPS } from "../data/recipe-steps.js";
 import { adultOnlyNames } from "../data/recipes.js";
 import { buildShoppingList, formatRub } from "./shopping.js";
+import { buildSessionPlan } from "./cook.js";
 
 function esc(str) {
   return String(str)
@@ -14,16 +15,22 @@ function esc(str) {
 
 export function buildReportModel(week, settings) {
   const month = MONTH_NAMES[(settings.month || 1) - 1];
-  const shop = buildShoppingList(week);
+  const shop = buildShoppingList(week, settings);
+  const sessions = cookSessionsCount(settings);
   const days = week.days.map((day) => {
     const meals = [];
+    const group = cookSessionForDay(day.index, settings);
+    const sessionPlan =
+      sessions && isCookDay(day.index, settings) && day.meals.lunch && day.meals.dinner && group
+        ? buildSessionPlan(day.meals.lunch, day.meals.dinner, group.length)
+        : null;
     for (const slot of MEAL_SLOTS) {
       if (isSkipped(week, day.index, slot)) continue;
       const recipe = day.meals[slot];
       if (!recipe) continue;
       const leftover =
-        (slot === "lunch" || slot === "dinner") && settings.cookTwoDays
-          ? leftoverPairLabel(day.index, true)
+        (slot === "lunch" || slot === "dinner") && sessions
+          ? leftoverPairLabel(day.index, settings)
           : "";
       const scale = portionsFor(recipe);
       meals.push({
@@ -46,11 +53,12 @@ export function buildReportModel(week, settings) {
         steps: RECIPE_STEPS[recipe.id] || [],
       });
     }
-    return { weekday: day.weekday, meals };
+    return { weekday: day.weekday, meals, sessionPlan };
   });
   return {
     month,
-    twoDays: Boolean(settings.cookTwoDays),
+    twoDays: Boolean(sessions),
+    sessionsHint: sessions ? cookSessionsHint(settings) : "",
     shop,
     days,
   };
@@ -62,7 +70,7 @@ export function renderReportInner(week, settings) {
     <header class="report-head">
       <p class="eyebrow">Республика Башкортостан · ${esc(model.month)}</p>
       <h1>Меню на неделю</h1>
-      <p class="lede">Семья из трёх человек${model.twoDays ? " · обед и ужин готовим на два дня (пн–вт, ср–чт, пт–сб)" : ""}</p>
+      <p class="lede">Семья из трёх человек${model.twoDays ? ` · обед и ужин готовим сессиями (${esc(model.sessionsHint)})` : ""}</p>
     </header>
     <section>
       <h2>Список покупок</h2>
@@ -84,6 +92,11 @@ export function renderReportInner(week, settings) {
           (day) => `
         <article class="report-day">
           <h3>${esc(day.weekday)}</h3>
+          ${
+            day.sessionPlan
+              ? `<p class="lede">Сессия готовки, ~${day.sessionPlan.wallMinutes} мин: ${day.sessionPlan.steps.map(esc).join(" ")}</p>`
+              : ""
+          }
           ${
             day.meals.length
               ? day.meals
@@ -151,7 +164,7 @@ export function buildReportText(week, settings) {
   const lines = [
     "Меню на неделю",
     `Башкортостан · ${model.month}`,
-    model.twoDays ? "Обед и ужин готовим на два дня." : "",
+    model.twoDays ? `Обед и ужин готовим сессиями (${model.sessionsHint}).` : "",
     "",
     `Покупки, ориентир: ${formatRub(model.shop.total)}`,
   ];
@@ -164,6 +177,10 @@ export function buildReportText(week, settings) {
   lines.push("", "Рецепты");
   for (const day of model.days) {
     lines.push("", day.weekday);
+    if (day.sessionPlan) {
+      lines.push(`Сессия готовки (~${day.sessionPlan.wallMinutes} мин):`);
+      day.sessionPlan.steps.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
+    }
     if (!day.meals.length) {
       lines.push("Блюда убраны.");
       continue;

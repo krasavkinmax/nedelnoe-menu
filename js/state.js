@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, ALLERGY_EXCLUDE } from "./data/family.js";
+import { DEFAULT_SETTINGS, ALLERGY_EXCLUDE, cookSessionsCount } from "./data/family.js";
 
 const KEY = "bashkir-week-menu-v1";
 
@@ -34,6 +34,16 @@ export function initialState() {
   const disliked = new Set(settings.disliked || []);
   for (const id of ALLERGY_EXCLUDE) disliked.add(id);
   settings.disliked = [...disliked];
+  if (saved?.settings?.cookSessions == null) {
+    settings.cookSessions = settings.cookTwoDays ? 3 : 0;
+  } else {
+    settings.cookSessions = cookSessionsCount(settings);
+  }
+  delete settings.cookTwoDays;
+  const liked = new Set(settings.liked || []);
+  for (const id of ALLERGY_EXCLUDE) liked.delete(id);
+  for (const id of settings.disliked) liked.delete(id);
+  settings.liked = [...liked];
   return {
     settings,
     seed: saved?.seed ?? Date.now() >>> 0,
