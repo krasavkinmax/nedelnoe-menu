@@ -33,8 +33,7 @@ const SLOT_TO_MEAL = {
   breakfast: "breakfast",
   lunch: "lunch",
   dinner: "dinner",
-  snackAm: "snack",
-  snackPm: "snack",
+  snack: "snack",
 };
 
 const MAIN_PRODUCT_GROUP = {
@@ -445,7 +444,7 @@ function pickRecipe(ctx) {
 
     if (needFish && recipe.protein === "fish" && (ctx.slot === "lunch" || ctx.slot === "dinner")) s += 3.5;
     if (needLegume && recipe.protein === "legume") s += 3;
-    if ((ctx.slot === "snackAm" || ctx.slot === "snackPm") && recipeHasDairyProduct(recipe)) s += 1.2;
+    if (ctx.slot === "snack" && recipeHasDairyProduct(recipe)) s += 1.2;
 
     if (recipe.protein === "pork") s -= 5.5;
 
@@ -532,7 +531,7 @@ function applyWeeklyGuarantees(days, settings, rng, used, targets) {
     const dairy = MEAL_SLOTS.some((s) => day.meals[s] && hasDairy(day.meals[s]));
     if (!dairy) {
       const snack = pickRecipe({
-        slot: "snackPm",
+        slot: "snack",
         settings,
         rng,
         used,
@@ -547,7 +546,7 @@ function applyWeeklyGuarantees(days, settings, rng, used, targets) {
         sameDayDinner: day.meals.dinner,
       });
       if (snack && hasDairy(snack)) {
-        day.meals.snackPm = snack;
+        day.meals.snack = snack;
         days[i] = makeDay(i, day.meals, targets);
       }
     }
@@ -746,7 +745,7 @@ function balanceDays(days, settings, rng, used, targets) {
     let kcal = days[i].totals.kcal;
     let guard = 0;
     while ((kcal < lo || kcal > hi) && guard < 6) {
-      const trySlots = kcal < lo ? ["lunch", "dinner", "breakfast"] : ["snackPm", "dinner", "breakfast"];
+      const trySlots = kcal < lo ? ["lunch", "dinner", "breakfast"] : ["snack", "dinner", "breakfast"];
       const slot = trySlots[guard % trySlots.length];
       const current = days[i].meals[slot];
       const protectedProtein = current && (current.protein === "fish" || current.protein === "legume");

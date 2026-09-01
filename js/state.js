@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, ALLERGY_EXCLUDE, cookSessionsCount } from "./data/family.js";
+import { refreshWeekNutrition } from "./engine/generator.js";
 
 const KEY = "bashkir-week-menu-v1";
 
@@ -28,6 +29,30 @@ export function saveState(state) {
   localStorage.setItem(KEY, JSON.stringify(snapshot));
 }
 
+function migrateWeek(week) {
+  if (!week?.days) return week;
+  let changed = false;
+  const skipped = { ...(week.skipped || {}) };
+  for (const day of week.days) {
+    const meals = day.meals || {};
+    if (meals.snackAm || meals.snackPm) {
+      if (!meals.snack) meals.snack = meals.snackPm || meals.snackAm || null;
+      delete meals.snackAm;
+      delete meals.snackPm;
+      changed = true;
+    }
+    const i = day.index;
+    if (skipped[`${i}:snackAm`] || skipped[`${i}:snackPm`]) {
+      skipped[`${i}:snack`] = true;
+      changed = true;
+    }
+    delete skipped[`${i}:snackAm`];
+    delete skipped[`${i}:snackPm`];
+  }
+  week.skipped = skipped;
+  return changed ? refreshWeekNutrition(week) : week;
+}
+
 export function initialState() {
   const saved = loadState();
   const settings = { ...DEFAULT_SETTINGS, ...(saved?.settings || {}) };
@@ -47,7 +72,7 @@ export function initialState() {
   return {
     settings,
     seed: saved?.seed ?? Date.now() >>> 0,
-    week: saved?.week ?? null,
+    week: migrateWeek(saved?.week) ?? null,
     shopChecked: saved?.shopChecked ?? {},
     tab: saved?.tab ?? "menu",
     selectedDay: saved?.selectedDay ?? mondayIndex(),

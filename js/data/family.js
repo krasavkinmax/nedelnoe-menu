@@ -75,18 +75,16 @@ export const SLOT_KCAL_SHARE = {
   breakfast: 0.25,
   lunch: 0.35,
   dinner: 0.25,
-  snackAm: 0.075,
-  snackPm: 0.075,
+  snack: 0.15,
 };
 
-export const MEAL_SLOTS = ["breakfast", "lunch", "dinner", "snackAm", "snackPm"];
+export const MEAL_SLOTS = ["breakfast", "lunch", "dinner", "snack"];
 
 export const MEAL_LABELS = {
   breakfast: "Завтрак",
   lunch: "Обед",
   dinner: "Ужин",
-  snackAm: "Перекус утром",
-  snackPm: "Перекус днём",
+  snack: "Перекус",
 };
 
 export const WEEKDAY_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
