@@ -36,6 +36,7 @@ export const MEAL_SCALE = {
   lunch: 1.8,
   dinner: 1.6,
   snack: 1.15,
+  salad: 1.0,
 };
 
 export function portionsFor(recipe) {
@@ -78,13 +79,16 @@ export const SLOT_KCAL_SHARE = {
   snack: 0.15,
 };
 
-export const MEAL_SLOTS = ["breakfast", "lunch", "dinner", "snack"];
+export const MEAL_SLOTS = ["breakfast", "lunch", "dinner", "snack", "salad"];
+
+export const MAIN_MEAL_SLOTS = ["breakfast", "lunch", "dinner", "snack"];
 
 export const MEAL_LABELS = {
   breakfast: "Завтрак",
   lunch: "Обед",
   dinner: "Ужин",
   snack: "Перекус",
+  salad: "Салат",
 };
 
 export const WEEKDAY_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -181,6 +185,7 @@ export const DISLIKE_OPTIONS = [
   { id: "fishFillet", label: "Рыба" },
   { id: "chicken", label: "Курица" },
   { id: "turkey", label: "Индейка" },
+  { id: "duck", label: "Утка" },
   { id: "beef", label: "Говядина" },
   { id: "pork", label: "Свинина" },
   { id: "liver", label: "Печень" },
@@ -204,18 +209,19 @@ export const DISLIKE_OPTIONS = [
 
 export const DISLIKE_GROUPS = {
   shrimp: ["shrimp"],
-  fishFillet: ["fishFillet", "pike"],
+  fishFillet: ["fishFillet", "pike", "pinkSalmon", "trout"],
   chicken: ["chicken", "chickenBreast"],
   turkey: ["turkey"],
+  duck: ["duck"],
   beef: ["beef"],
-  pork: ["pork"],
+  pork: ["pork", "ham"],
+  nuts: ["nuts", "pesto"],
   liver: ["liver"],
   egg: ["egg"],
   milk: ["milk"],
   tvorog: ["tvorog"],
   cheese: ["cheese"],
   honey: ["honey"],
-  nuts: ["nuts"],
   mushrooms: ["mushrooms"],
   garlic: ["garlic"],
   onion: ["onion"],

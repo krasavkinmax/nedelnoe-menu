@@ -1,2 +1,2 @@
 /** Пользовательская версия приложения, видна на главной. */
-export const APP_VERSION = "1.5.0";
+export const APP_VERSION = "1.6.0";

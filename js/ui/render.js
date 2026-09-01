@@ -170,7 +170,7 @@ function renderMenu(state, targets) {
     return `
       <section class="empty">
         <h2>Неделя ещё не собрана</h2>
-        <p>Нажмите «Составить меню» — алгоритм подберёт 7 дней с рыбой, бобовыми, кисломолочным и сезонными блюдами.</p>
+        <p>Нажмите «Составить меню» — алгоритм подберёт 7 дней с рыбой, бобовыми, кисломолочным и сезонными блюдами. Салат в каждом дне можно выбрать отдельно, по умолчанию он не стоит.</p>
         <button class="btn btn-primary" data-act="generate">Составить меню</button>
       </section>
     `;
@@ -250,7 +250,19 @@ function renderCookSession(day, state) {
 
 function renderMeal(day, slot, state) {
   const recipe = day.meals[slot];
-  if (!recipe) return "";
+  if (!recipe) {
+    if (slot !== "salad") return "";
+    return `
+      <div class="meal meal-empty">
+        <div class="meal-label">${MEAL_LABELS[slot]}</div>
+        <p class="meal-title">Салат не выбран</p>
+        <p class="lede">По умолчанию салат не ставится. Можно выбрать из каталога — цезарь, винегрет, греческий и другие.</p>
+        <div class="meal-actions">
+          <button class="mini mini-primary" data-replace="any" data-day="${day.index}" data-slot="${slot}">Выбрать салат</button>
+        </div>
+      </div>
+    `;
+  }
   if (isSkipped(state.week, day.index, slot)) {
     return `
       <div class="meal meal-skipped">
@@ -290,8 +302,8 @@ function renderMeal(day, slot, state) {
       <div class="meal-actions">
         <button class="mini mini-primary" data-recipe="${slot}" data-recipe-day="${day.index}">Рецепт</button>
         <button class="mini" data-replace="any" data-day="${day.index}" data-slot="${slot}">Заменить</button>
-        <button class="mini" data-replace="cheaper" data-day="${day.index}" data-slot="${slot}">Дешевле</button>
-        <button class="mini" data-skip="${slot}" data-day="${day.index}">Убрать</button>
+        ${slot === "salad" ? "" : `<button class="mini" data-replace="cheaper" data-day="${day.index}" data-slot="${slot}">Дешевле</button>`}
+        <button class="mini" data-skip="${slot}" data-day="${day.index}">${slot === "salad" ? "Убрать" : "Убрать"}</button>
       </div>
     </div>
   `;
@@ -512,26 +524,36 @@ function renderSettings(state) {
 function renderReplaceSheet(state) {
   const { dayIndex, slot } = state.replaceOpen;
   const current = state.week?.days[dayIndex]?.meals[slot];
-  if (!current) return "";
+  if (slot !== "salad" && !current) return "";
   const q = (state.replaceQuery || "").trim().toLowerCase();
   const options = listReplaceOptions(state.week, dayIndex, slot, state.settings).filter((opt) =>
     q ? opt.recipe.title.toLowerCase().includes(q) : true
   );
   const cuisineLabel = { bashkir: "башкирское", tatar: "татарское", ru: "домашнее" };
+  const heading = slot === "salad" ? "Выбрать салат" : "Заменить блюдо";
+  const now = current ? `Сейчас: ${escapeHtml(current.title)}.` : "Сейчас салат не выбран.";
   return `
     <div class="sheet-backdrop" data-close-replace="1"></div>
-    <aside class="sheet replace-sheet" role="dialog" aria-label="Замена блюда">
+    <aside class="sheet replace-sheet" role="dialog" aria-label="${heading}">
       <div class="sheet-handle"></div>
       <div class="sheet-head">
         <div>
           <p class="meal-label">${MEAL_LABELS[slot]} · ${state.week.days[dayIndex].weekday}</p>
-          <h2>Заменить блюдо</h2>
-          <p class="sheet-meta">Сейчас: ${escapeHtml(current.title)}. Все блюда категории «${MEAL_LABELS[slot]}».</p>
+          <h2>${heading}</h2>
+          <p class="sheet-meta">${now} Все блюда категории «${MEAL_LABELS[slot]}».</p>
         </div>
         <button type="button" class="sheet-close" data-close-replace="1" aria-label="Закрыть">×</button>
       </div>
       <input type="search" class="replace-search" data-replace-query placeholder="Найти блюдо" value="${escapeHtml(state.replaceQuery || "")}" />
       <div class="pick-list">
+        ${
+          slot === "salad"
+            ? `<button type="button" class="pick-item ${current ? "" : "on"}" data-pick-recipe="__none__">
+                <span class="pick-title">Без салата</span>
+                <span class="pick-meta">по умолчанию не выбран</span>
+              </button>`
+            : ""
+        }
         ${
           options.length
             ? options

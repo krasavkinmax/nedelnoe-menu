@@ -64,6 +64,14 @@ const actions = {
       return;
     }
     const next = replaceMealById(state.week, dayIndex, slot, state.settings, recipeId);
+    if (recipeId === "__none__") {
+      state.replaceOpen = null;
+      state.replaceQuery = "";
+      state.week = next;
+      state.toast = "Салат убран из этого дня. Список покупок пересчитан.";
+      persist();
+      return;
+    }
     if (!next.lastReplace?.to || next.lastReplace.to.id === currentId) {
       state.toast = "Это блюдо сюда поставить нельзя.";
       paint();
@@ -188,6 +196,12 @@ const actions = {
   },
   skip(dayIndex, slot) {
     if (!state.week) return;
+    if (slot === "salad") {
+      state.week = replaceMealById(state.week, dayIndex, slot, state.settings, "__none__");
+      state.toast = "Салат убран из этого дня. Список покупок пересчитан.";
+      persist();
+      return;
+    }
     state.week = skipMeal(state.week, dayIndex, slot, state.settings);
     const sessions = cookSessionsCount(state.settings) && (slot === "lunch" || slot === "dinner");
     state.toast = sessions
@@ -211,6 +225,16 @@ const actions = {
 function applyReplace(next) {
   state.week = next;
   const { from, to, saved } = next.lastReplace;
+  if (!to) {
+    state.toast = from ? `Салат «${from.title}» убран.` : "Салат убран.";
+    persist();
+    return;
+  }
+  if (!from) {
+    state.toast = `Выбран салат «${to.title}».`;
+    persist();
+    return;
+  }
   const cheaper = saved > 5;
   state.toast = cheaper
     ? `«${to.title}» вместо «${from.title}». Экономия около ${formatRub(saved)}.`

@@ -10,3 +10,5 @@ Wikimedia Commons (CC BY-SA), cropped to 1200x900:
   https://commons.wikimedia.org/wiki/File:Syrniki6.jpg
 
 Remaining photos are generated illustrations of the dishes.
+
+Added in 1.6.0 (sandwiches, duck, salmon, trout, salads, etc.): generated illustrations.

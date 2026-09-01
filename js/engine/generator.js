@@ -4,6 +4,7 @@ import {
   familyTargets,
   SLOT_KCAL_SHARE,
   MEAL_SLOTS,
+  MAIN_MEAL_SLOTS,
   MEAL_SCALE,
   dislikedProductIds,
   likedProductIds,
@@ -34,17 +35,22 @@ const SLOT_TO_MEAL = {
   lunch: "lunch",
   dinner: "dinner",
   snack: "snack",
+  salad: "salad",
 };
 
 const MAIN_PRODUCT_GROUP = {
   chicken: "chicken",
   chickenBreast: "chicken",
   turkey: "turkey",
+  duck: "duck",
   beef: "beef",
   pork: "pork",
+  ham: "pork",
   liver: "liver",
   fishFillet: "fish",
   pike: "fish",
+  pinkSalmon: "fish",
+  trout: "fish",
 };
 
 export const TARGET_WEEK_COST = 7000;
@@ -63,7 +69,7 @@ export function generateWeek(settings, seed) {
     const session = cookSessionForDay(d, settings);
     const leftoverDay = Boolean(session && session[0] !== d);
 
-    for (const slot of MEAL_SLOTS) {
+    for (const slot of MAIN_MEAL_SLOTS) {
       if (leftoverDay && (slot === "lunch" || slot === "dinner")) {
         meals[slot] = days[session[0]]?.meals[slot] || null;
         continue;
@@ -90,6 +96,7 @@ export function generateWeek(settings, seed) {
         used.set(recipe.id, (used.get(recipe.id) || 0) + 1);
       }
     }
+    meals.salad = null;
 
     prevLunchProtein = meals.lunch?.protein ?? null;
     days.push(makeDay(d, meals, targets));
@@ -127,6 +134,7 @@ export function generateWeek(settings, seed) {
 }
 
 export function replaceMeal(week, dayIndex, slot, settings, mode = "any") {
+  if (slot === "salad" && mode !== "cheaper") return week;
   const days = week.days.map((day) => ({
     ...day,
     meals: { ...day.meals },
@@ -226,17 +234,31 @@ export function listReplaceOptions(week, dayIndex, slot, settings) {
 }
 
 export function replaceMealById(week, dayIndex, slot, settings, recipeId) {
+  const days = week.days.map((day) => ({
+    ...day,
+    meals: { ...day.meals },
+  }));
+  const current = days[dayIndex].meals[slot];
+
+  if (slot === "salad" && (!recipeId || recipeId === "__none__")) {
+    days[dayIndex].meals.salad = null;
+    const nextWeek = refreshWeekNutrition({ ...week, days });
+    nextWeek.lastReplace = {
+      slot,
+      dayIndex,
+      from: current,
+      to: null,
+      saved: current ? recipeCost(current) : 0,
+    };
+    return nextWeek;
+  }
+
   const mealType = SLOT_TO_MEAL[slot];
   const nextRecipe = RECIPES.find((r) => r.id === recipeId && r.meal === mealType);
   if (!nextRecipe) return week;
   const allergy = new Set(ALLERGY_EXCLUDE);
   if (nextRecipe.ingredients.some((ing) => allergy.has(ing.productId))) return week;
 
-  const days = week.days.map((day) => ({
-    ...day,
-    meals: { ...day.meals },
-  }));
-  const current = days[dayIndex].meals[slot];
   if (current?.id === nextRecipe.id) return week;
 
   const skipped = applyPairedMeal(days, week.skipped, dayIndex, slot, nextRecipe, settings);
@@ -307,7 +329,8 @@ function skipKeyFrom(dayIndex, slot) {
 
 function applyPairedMeal(days, skipped, dayIndex, slot, recipe, settings) {
   const nextSkipped = { ...(skipped || {}) };
-  const targets = slot === "lunch" || slot === "dinner" ? sessionDays(dayIndex, settings) : [dayIndex];
+  const targets =
+    slot === "lunch" || slot === "dinner" ? sessionDays(dayIndex, settings) : [dayIndex];
   for (const d of targets) {
     days[d].meals[slot] = recipe;
     delete nextSkipped[skipKeyFrom(d, slot)];
@@ -321,6 +344,7 @@ function syncLeftovers(days, settings, targets) {
     for (const d of group.slice(1)) {
       days[d].meals.lunch = days[cook].meals.lunch;
       days[d].meals.dinner = days[cook].meals.dinner;
+      if (!days[d].meals.salad) days[d].meals.salad = null;
       days[d] = makeDay(d, days[d].meals, targets);
     }
     days[cook] = makeDay(cook, days[cook].meals, targets);
@@ -466,6 +490,7 @@ function pickRecipe(ctx) {
 
 function isEligible(recipe, mealType, settings, exclude) {
   if (recipe.meal !== mealType) return false;
+  if (/омлет/i.test(recipe.title) && mealType !== "breakfast") return false;
   if (!recipe.childSafe) return false;
   if (exclude.has(recipe.id)) return false;
   if (!recipeInSeason(recipe, settings.month)) return false;

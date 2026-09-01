@@ -23,7 +23,7 @@ export function buildShoppingList(week, settings) {
     }
   } else {
     for (const day of week.days) {
-      for (const slot of ["breakfast", "snack"]) {
+      for (const slot of ["breakfast", "snack", "salad"]) {
         if (skipped(day.index, slot)) continue;
         addRecipe(day.meals[slot], 1);
       }

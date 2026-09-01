@@ -1,7 +1,19 @@
 import { DEFAULT_SETTINGS, ALLERGY_EXCLUDE, cookSessionsCount } from "./data/family.js";
+import { RECIPES } from "./data/recipes.js";
 import { refreshWeekNutrition } from "./engine/generator.js";
 
 const KEY = "bashkir-week-menu-v1";
+
+const RECIPE_REMAP = {
+  echpochmak: "pasta-flotski",
+  "vak-belish": "pasta-flotski",
+  "stuffed-pepper": "tefteli",
+  "chickpea-stew": "duck-veg-stew",
+  "pasta-tvorog": "baked-chicken-potato-garlic",
+  "veg-ragu-egg": "veg-ragu-chicken",
+};
+
+const RECIPE_DROP = new Set(["zucchini-tvorog", "omelette-dinner", "okroshka-kefir"]);
 
 function mondayIndex() {
   return (new Date().getDay() + 6) % 7;
@@ -29,6 +41,16 @@ export function saveState(state) {
   localStorage.setItem(KEY, JSON.stringify(snapshot));
 }
 
+function liveRecipe(old, slot) {
+  if (!old?.id) return null;
+  if (RECIPE_DROP.has(old.id)) return null;
+  const id = RECIPE_REMAP[old.id] || old.id;
+  const next = RECIPES.find((r) => r.id === id);
+  if (!next) return null;
+  if (next.meal !== slot) return null;
+  return next;
+}
+
 function migrateWeek(week) {
   if (!week?.days) return week;
   let changed = false;
@@ -39,6 +61,27 @@ function migrateWeek(week) {
       if (!meals.snack) meals.snack = meals.snackPm || meals.snackAm || null;
       delete meals.snackAm;
       delete meals.snackPm;
+      changed = true;
+    }
+    for (const slot of Object.keys(meals)) {
+      const current = meals[slot];
+      if (!current) continue;
+      const next = liveRecipe(current, slot);
+      if (next?.id !== current.id) {
+        meals[slot] = next;
+        changed = true;
+      } else {
+        meals[slot] = next;
+      }
+    }
+    for (const slot of ["breakfast", "lunch", "dinner", "snack"]) {
+      if (!meals[slot]) {
+        meals[slot] = RECIPES.find((r) => r.meal === slot && r.childSafe) || null;
+        changed = true;
+      }
+    }
+    if (!("salad" in meals) || meals.salad === undefined) {
+      meals.salad = meals.salad || null;
       changed = true;
     }
     const i = day.index;

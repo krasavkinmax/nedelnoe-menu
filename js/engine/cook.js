@@ -13,6 +13,9 @@ const PREP_FROM_PRODUCT = {
   liver: "liver",
   fishFillet: "fish",
   pike: "fish",
+  pinkSalmon: "fish",
+  trout: "fish",
+  duck: "duck",
   pepper: "pepper",
   pumpkin: "pumpkin",
   mushrooms: "mushrooms",
@@ -31,6 +34,7 @@ export const PREP_LABELS = {
   pork: "свинина",
   liver: "печень",
   fish: "рыба",
+  duck: "утка",
   pepper: "перец",
   pumpkin: "тыква",
   mushrooms: "грибы",
@@ -55,8 +59,8 @@ export function inferPrepKeys(recipe) {
 function inferHeat(recipe) {
   const text = `${recipe.id} ${recipe.title}`.toLowerCase();
   if (recipe.soup) return "stove";
-  if (/запеч|духовк|baked|эчпочмак|бэлиш|вак-бэлиш/.test(text)) return "oven";
-  if (/окрошк|салат/.test(text) && !/суп/.test(text)) return "none";
+  if (/запеч|духовк|baked|панини|бургер/.test(text)) return "oven";
+  if (/окрошк|салат|сэндвич/.test(text) && !/суп/.test(text)) return "none";
   return "stove";
 }
 

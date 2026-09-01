@@ -523,6 +523,10 @@ h1 {
   opacity: 0.92;
 }
 
+.meal-empty {
+  background: #f7f1e8;
+}
+
 .meal-actions {
   display: flex;
   flex-wrap: wrap;
